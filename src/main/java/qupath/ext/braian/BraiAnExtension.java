@@ -7,6 +7,7 @@ package qupath.ext.braian;
 import org.controlsfx.control.action.Action;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.braian.gui.BraiAnDetectDialog;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.actions.ActionTools;
 import qupath.lib.gui.extensions.QuPathExtension;
@@ -46,6 +47,15 @@ public class BraiAnExtension implements QuPathExtension {
     }
 
     private void addCommands(QuPathGUI qupath) {
+        var openGui = ActionTools.createAction(
+                () -> {
+                    try {
+                        new BraiAnDetectDialog(qupath).show();
+                    } catch (IllegalStateException e) {
+                        logger.warn("BraiAnDetect GUI not opened: {}", e.getMessage());
+                    }
+                },
+                "Open BraiAnDetect Pipeline Manager");
         var showExclusions = ActionTools.createAction(
                 () -> {
                     PathObjectHierarchy hierarchy = QP.getCurrentHierarchy();
@@ -61,6 +71,7 @@ public class BraiAnExtension implements QuPathExtension {
                 "Show regions currently excluded");
         MenuTools.addMenuItems(
                 qupath.getMenu(BraiAnExtension.menuPosition, true),
+                openGui,
                 showExclusions
         );
     }
