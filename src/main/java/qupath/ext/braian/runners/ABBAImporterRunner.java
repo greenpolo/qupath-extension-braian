@@ -56,6 +56,42 @@ public final class ABBAImporterRunner {
         }
     }
 
+    public static void runProject(QuPathGUI qupath) {
+        if (!AbbaReflectionBridge.isAvailable()) {
+            throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());
+        }
+        Project<BufferedImage> project = qupath.getProject();
+        if (project == null) {
+            throw new IllegalStateException("No project open.");
+        }
+
+        for (ProjectImageEntry<BufferedImage> entry : project.getImageList()) {
+            ImageData<BufferedImage> imageData;
+            try {
+                imageData = entry.readImageData();
+            } catch (IOException e) {
+                logger.error("Failed to read image data {}: {}", entry.getImageName(), e.getMessage());
+                continue;
+            }
+            try {
+                QPEx.setBatchProjectAndImage(project, imageData);
+                importAtlas(imageData);
+                entry.saveImageData(imageData);
+            } catch (Exception e) {
+                logger.error("Failed to import atlas for {}: {}", entry.getImageName(), e.getMessage());
+            } finally {
+                closeServer(imageData);
+            }
+        }
+
+        try {
+            project.syncChanges();
+        } catch (Exception e) {
+            logger.warn("Failed to sync project {}: {}", project.getName(), e.getMessage());
+        }
+        System.gc();
+    }
+
     public static void runBatch(QuPathGUI qupath, Path rootPath) {
         if (!AbbaReflectionBridge.isAvailable()) {
             throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());

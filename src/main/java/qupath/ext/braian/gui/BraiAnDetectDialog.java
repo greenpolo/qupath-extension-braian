@@ -132,19 +132,54 @@ public class BraiAnDetectDialog {
         VBox container = new VBox(16);
         container.setPadding(new Insets(16));
 
+        VBox actionPanel = new VBox(8);
+        Button importCurrentButton = new Button("Import to Current Image");
+        Button importProjectButton = new Button("Import to Project");
+        Button importExperimentButton = new Button("Import to Experiment");
+
+        importCurrentButton.disableProperty().bind(running);
+        importProjectButton.disableProperty().bind(running);
+        importExperimentButton.disableProperty().bind(running);
+
+        importCurrentButton.setOnAction(event -> handleImportCurrent());
+        importProjectButton.setOnAction(event -> handleImportProject());
+        importExperimentButton.setOnAction(event -> handleImportExperiment());
+
+        actionPanel.getChildren().addAll(importCurrentButton, importProjectButton, importExperimentButton);
+
+        Label warningLabel = new Label(
+                "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
+        warningLabel.getStyleClass().add("warning");
+
+        container.getChildren().addAll(actionPanel, warningLabel);
+        return new Tab("Atlas Import", container);
+    }
+
+    private Tab buildExperimentTab() {
+        VBox scopeSection = new VBox(12);
+        scopeSection.setPadding(new Insets(16, 16, 0, 16));
+
         HBox scopeRow = new HBox(16);
         scopeRow.setAlignment(Pos.CENTER_LEFT);
         ToggleGroup scopeGroup = new ToggleGroup();
         RadioButton currentProjectToggle = new RadioButton("Current Project");
-        RadioButton batchToggle = new RadioButton("Batch Experiment");
+        RadioButton batchToggle = new RadioButton("Experiment");
         currentProjectToggle.setToggleGroup(scopeGroup);
         batchToggle.setToggleGroup(scopeGroup);
         currentProjectToggle.setSelected(true);
         scopeRow.getChildren().addAll(new Label("Scope:"), currentProjectToggle, batchToggle);
 
+        currentProjectToggle.selectedProperty().addListener((obs, oldValue, selected) -> {
+            if (selected) {
+                batchMode.set(false);
+                updateConfigForContext();
+            }
+        });
         batchToggle.selectedProperty().addListener((obs, oldValue, selected) -> {
-            batchMode.set(selected);
-            updateConfigForContext();
+            if (selected) {
+                batchMode.set(true);
+                updateConfigForContext();
+            }
         });
 
         HBox batchChooserRow = new HBox(8);
@@ -157,32 +192,14 @@ public class BraiAnDetectDialog {
             }
         });
         Button browseButton = new Button("Browse");
-        browseButton.setOnAction(event -> chooseBatchFolder(batchRootField.getScene().getWindow()));
+        browseButton.setOnAction(event -> chooseBatchFolder(stage));
         HBox.setHgrow(batchRootField, Priority.ALWAYS);
         batchChooserRow.getChildren().addAll(new Label("Projects Folder:"), batchRootField, browseButton);
         batchChooserRow.managedProperty().bind(batchMode);
         batchChooserRow.visibleProperty().bind(batchMode);
 
-        VBox actionPanel = new VBox(8);
-        Button importCurrentButton = new Button("Import Atlas to Current Image");
-        Button importBatchButton = new Button("Import Atlas to Selected Projects");
-        importCurrentButton.disableProperty().bind(running);
-        importBatchButton.disableProperty()
-                .bind(running.or(Bindings.or(batchMode.not(), batchRootField.textProperty().isEmpty())));
+        scopeSection.getChildren().addAll(scopeRow, batchChooserRow, new Separator());
 
-        importCurrentButton.setOnAction(event -> handleImportCurrent());
-        importBatchButton.setOnAction(event -> handleImportBatch());
-        actionPanel.getChildren().addAll(importCurrentButton, importBatchButton);
-
-        Label warningLabel = new Label(
-                "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
-        warningLabel.getStyleClass().add("warning");
-
-        container.getChildren().addAll(scopeRow, batchChooserRow, new Separator(), actionPanel, warningLabel);
-        return new Tab("Setup & Import", container);
-    }
-
-    private Tab buildExperimentTab() {
         this.experimentPane = new ExperimentPane(
                 config,
                 channelNames,
@@ -199,7 +216,11 @@ public class BraiAnDetectDialog {
         ScrollPane scrollPane = new ScrollPane(experimentPane);
         scrollPane.setFitToWidth(true);
         scrollPane.setFitToHeight(true);
-        return new Tab("Analysis & Detection", scrollPane);
+
+        BorderPane layout = new BorderPane();
+        layout.setTop(scopeSection);
+        layout.setCenter(scrollPane);
+        return new Tab("Analysis & Detection", layout);
     }
 
     private void handleImportCurrent() {
@@ -209,13 +230,25 @@ public class BraiAnDetectDialog {
         });
     }
 
-    private void handleImportBatch() {
+    private void handleImportProject() {
+        runAsync("ABBA Import", () -> {
+            ABBAImporterRunner.runProject(qupath);
+            Platform.runLater(() -> experimentPane.autoDetectAtlas());
+        });
+    }
+
+    private void handleImportExperiment() {
         Path rootPath = resolveBatchRoot();
         if (rootPath == null) {
-            Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before running batch import.");
+            chooseBatchFolder(stage);
+            rootPath = resolveBatchRoot();
+        }
+        if (rootPath == null) {
+            Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before importing to an experiment.");
             return;
         }
-        runAsync("ABBA Import", () -> ABBAImporterRunner.runBatch(qupath, rootPath));
+        Path finalRootPath = rootPath;
+        runAsync("ABBA Import", () -> ABBAImporterRunner.runBatch(qupath, finalRootPath));
     }
 
     private void handlePreview() {
