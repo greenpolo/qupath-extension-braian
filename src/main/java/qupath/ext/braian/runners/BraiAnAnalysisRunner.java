@@ -185,7 +185,8 @@ public final class BraiAnAnalysisRunner {
                 return;
             }
             try {
-                overlaps.add(new OverlappingDetections(control, others, true, hierarchy));
+                List<AbstractDetections> otherDetections = new ArrayList<>(others);
+                overlaps.add(new OverlappingDetections(control, otherDetections, true, hierarchy));
             } catch (NoCellContainersFoundException e) {
                 logger.warn("Unable to compute overlaps: {}", e.getMessage());
             }
@@ -250,7 +251,7 @@ public final class BraiAnAnalysisRunner {
         if (raw == null || raw.isBlank()) {
             return "image";
         }
-        String sanitized = raw.replaceAll("[<>:\\"/\\\\|?*]", "");
+        String sanitized = raw.replaceAll("[<>:\"/\\\\|?*]", "");
         if (sanitized.isBlank()) {
             return "image";
         }
