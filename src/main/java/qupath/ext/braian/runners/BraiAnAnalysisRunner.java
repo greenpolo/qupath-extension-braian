@@ -123,6 +123,8 @@ public final class BraiAnAnalysisRunner {
                                      ProjectImageEntry<BufferedImage> entry,
                                      ProjectsConfig config,
                                      boolean export) {
+        applyChannelRenaming(imageData, config);
+
         var hierarchy = imageData.getHierarchy();
         Collection<PathAnnotationObject> annotations = config.getAnnotationsForDetections(hierarchy);
 
@@ -266,6 +268,44 @@ public final class BraiAnAnalysisRunner {
             logger.warn("Failed to scan projects directory {}: {}", rootPath, e.getMessage());
         }
         return projectFiles;
+    }
+
+    private static void applyChannelRenaming(ImageData<BufferedImage> imageData, ProjectsConfig config) {
+        var channelConfigs = config.getChannelDetections();
+        if (channelConfigs == null || channelConfigs.isEmpty()) {
+            return;
+        }
+
+        var metadata = imageData.getServerMetadata();
+        var channels = metadata.getChannels();
+        List<String> currentNames = new ArrayList<>();
+        for (var ch : channels) {
+            currentNames.add(ch.getName());
+        }
+
+        boolean changed = false;
+        for (ChannelDetectionsConfig chConfig : channelConfigs) {
+            int inputId = chConfig.getInputChannelID(); // 1-based
+            String targetName = chConfig.getName();
+            
+            if (inputId > 0 && inputId <= currentNames.size() && targetName != null && !targetName.isBlank()) {
+                // Check if rename is needed
+                int index = inputId - 1;
+                if (!currentNames.get(index).equals(targetName)) {
+                    currentNames.set(index, targetName);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            try {
+                imageData.getServer().updateChannelNames(currentNames);
+                logger.info("Updated channel names to: {}", currentNames);
+            } catch (Exception e) {
+                logger.error("Failed to update channel names: {}", e.getMessage());
+            }
+        }
     }
 
     private static Optional<Path> resolveProjectFile(Path dir) {

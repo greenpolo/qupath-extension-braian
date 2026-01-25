@@ -97,10 +97,20 @@ public class ChannelCard extends VBox {
             notifyConfigChanged();
         });
 
+        Spinner<Integer> channelIdSpinner = createIntegerSpinner(1, 16, config.getInputChannelID(), 1);
+        channelIdSpinner.setPrefWidth(60);
+        channelIdSpinner.valueProperty().addListener((obs, oldValue, value) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            config.setInputChannelID(value);
+            notifyConfigChanged();
+        });
+
         Button removeButton = new Button("Remove");
         removeButton.setOnAction(event -> onRemove.run());
 
-        HBox header = new HBox(8, new Label("Channel"), channelName, removeButton);
+        HBox header = new HBox(8, new Label("Source Ch"), channelIdSpinner, new Label("-> Name"), channelName, removeButton);
         header.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(channelName, Priority.ALWAYS);
 
