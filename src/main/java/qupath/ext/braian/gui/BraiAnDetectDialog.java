@@ -4,6 +4,7 @@
 
 package qupath.ext.braian.gui;
 
+import javafx.animation.PauseTransition;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -28,6 +29,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import javafx.stage.Window;
+import javafx.util.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.braian.config.ProjectsConfig;
@@ -38,14 +40,18 @@ import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageChannel;
 import qupath.lib.projects.Project;
 import qupath.lib.projects.Projects;
+import org.yaml.snakeyaml.error.YAMLException;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class BraiAnDetectDialog {
     private static final Logger logger = LoggerFactory.getLogger(BraiAnDetectDialog.class);
@@ -55,6 +61,8 @@ public class BraiAnDetectDialog {
     private final Stage stage;
     private final BooleanProperty batchMode = new SimpleBooleanProperty(false);
     private final TextField batchRootField = new TextField();
+    private final PauseTransition saveDebounce = new PauseTransition(Duration.millis(500));
+    private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
     private final ObservableList<String> channelNames = FXCollections.observableArrayList();
     private final List<String> availableImageChannels = new ArrayList<>();
     private ProjectsConfig config;
@@ -69,6 +77,7 @@ public class BraiAnDetectDialog {
         this.stage.setWidth(980);
         this.stage.setHeight(820);
         this.stage.setOnHidden(event -> {
+            shutdownSaveExecutor();
             if (onClose != null) {
                 onClose.run();
             }
@@ -92,20 +101,7 @@ public class BraiAnDetectDialog {
             Dialogs.showErrorMessage("BraiAnDetect", "Open a project before launching the GUI.");
             throw new IllegalStateException("No project open");
         }
-        Optional<Path> configPathOpt = BraiAn.resolvePathIfPresent(CONFIG_FILENAME);
-        try {
-            if (configPathOpt.isPresent()) {
-                this.config = ProjectsConfig.read(CONFIG_FILENAME);
-                this.configPath = configPathOpt.get();
-            } else {
-                this.config = new ProjectsConfig();
-                this.configPath = Projects.getBaseDirectory(project).toPath().resolve(CONFIG_FILENAME);
-            }
-        } catch (IOException e) {
-            Dialogs.showErrorMessage("BraiAnDetect", "Unable to load BraiAn.yml: " + e.getMessage());
-            this.config = new ProjectsConfig();
-            this.configPath = Projects.getBaseDirectory(project).toPath().resolve(CONFIG_FILENAME);
-        }
+        loadConfig(resolveConfigPath());
         ImageData<BufferedImage> imageData = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
         if (imageData != null) {
             for (ImageChannel channel : imageData.getServerMetadata().getChannels()) {
@@ -139,12 +135,20 @@ public class BraiAnDetectDialog {
         currentProjectToggle.setSelected(true);
         scopeRow.getChildren().addAll(new Label("Scope:"), currentProjectToggle, batchToggle);
 
-        batchToggle.selectedProperty().addListener((obs, oldValue, selected) -> batchMode.set(selected));
+        batchToggle.selectedProperty().addListener((obs, oldValue, selected) -> {
+            batchMode.set(selected);
+            updateConfigForContext();
+        });
 
         HBox batchChooserRow = new HBox(8);
         batchChooserRow.setAlignment(Pos.CENTER_LEFT);
         batchRootField.setPromptText("Select a root folder containing QuPath projects");
         batchRootField.setEditable(true);
+        batchRootField.textProperty().addListener((obs, oldValue, value) -> {
+            if (batchMode.get()) {
+                updateConfigForContext();
+            }
+        });
         Button browseButton = new Button("Browse");
         browseButton.setOnAction(event -> chooseBatchFolder(batchRootField.getScene().getWindow()));
         HBox.setHgrow(batchRootField, Priority.ALWAYS);
@@ -176,7 +180,10 @@ public class BraiAnDetectDialog {
                 stage,
                 batchMode,
                 this::handlePreview,
-                this::handleRun
+                this::handleRun,
+                this::scheduleConfigSave,
+                this::resolveConfigRoot,
+                this::resolveProjectDirectory
         );
         ScrollPane scrollPane = new ScrollPane(experimentPane);
         scrollPane.setFitToWidth(true);
@@ -200,6 +207,88 @@ public class BraiAnDetectDialog {
         logger.info("Run analysis is not wired yet.");
     }
 
+    private void scheduleConfigSave() {
+        saveDebounce.stop();
+        saveDebounce.setOnFinished(event -> saveConfigAsync(ProjectsConfig.toYaml(config)));
+        saveDebounce.playFromStart();
+    }
+
+    private void saveConfigAsync(String yaml) {
+        if (configPath == null) {
+            logger.warn("Config path is not available; skipping save.");
+            return;
+        }
+        saveExecutor.execute(() -> {
+            try {
+                writeConfigNow(yaml);
+            } catch (IOException e) {
+                logger.error("Failed to write configuration", e);
+            }
+        });
+    }
+
+    private void writeConfigNow(String yaml) throws IOException {
+        if (configPath.getParent() != null) {
+            Files.createDirectories(configPath.getParent());
+        }
+        Files.writeString(configPath, yaml, StandardCharsets.UTF_8);
+    }
+
+    private void loadConfig(Path path) {
+        if (path == null) {
+            return;
+        }
+        ProjectsConfig loadedConfig;
+        try {
+            if (Files.exists(path)) {
+                loadedConfig = ProjectsConfig.read(path);
+            } else {
+                loadedConfig = new ProjectsConfig();
+            }
+        } catch (IOException | YAMLException e) {
+            Dialogs.showErrorMessage("BraiAnDetect", "Unable to load BraiAn.yml: " + e.getMessage());
+            loadedConfig = new ProjectsConfig();
+        }
+        this.config = loadedConfig;
+        this.configPath = path;
+        if (experimentPane != null) {
+            experimentPane.setConfig(loadedConfig);
+        }
+        if (!Files.exists(path)) {
+            saveConfigAsync(ProjectsConfig.toYaml(loadedConfig));
+        }
+    }
+
+    private void updateConfigForContext() {
+        Path resolved = resolveConfigPath();
+        if (resolved == null) {
+            return;
+        }
+        if (configPath != null && configPath.equals(resolved)) {
+            return;
+        }
+        loadConfig(resolved);
+    }
+
+    private Path resolveConfigPath() {
+        if (batchMode.get()) {
+            String root = batchRootField.getText();
+            if (root == null || root.isBlank()) {
+                return null;
+            }
+            return Path.of(root).resolve(CONFIG_FILENAME);
+        }
+        Optional<Path> configPathOpt = BraiAn.resolvePathIfPresent(CONFIG_FILENAME);
+        if (configPathOpt.isPresent()) {
+            return configPathOpt.get();
+        }
+        Path projectDir = resolveProjectDirectory();
+        if (projectDir == null) {
+            return null;
+        }
+        return projectDir.resolve(CONFIG_FILENAME);
+    }
+
     private void chooseBatchFolder(Window owner) {
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("Select QuPath Projects Folder");
@@ -211,6 +300,18 @@ public class BraiAnDetectDialog {
         if (selection != null) {
             batchRootField.setText(selection.getAbsolutePath());
         }
+    }
+
+    private Path resolveConfigRoot() {
+        if (configPath != null) {
+            return configPath.getParent();
+        }
+        return resolveProjectDirectory();
+    }
+
+    private void shutdownSaveExecutor() {
+        saveDebounce.stop();
+        saveExecutor.shutdown();
     }
 
     private Path resolveProjectDirectory() {
