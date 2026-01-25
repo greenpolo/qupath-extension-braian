@@ -218,9 +218,10 @@ public class ChannelCard extends VBox {
         TitledPane advancedPane = new TitledPane("Advanced parameters", buildAdvancedSection());
         advancedPane.setExpanded(false);
 
-        VBox classifierSection = buildClassifierSection(channelName);
+        TitledPane classifiersPane = new TitledPane("Classifiers", buildClassifierSection(channelName));
+        classifiersPane.setExpanded(false);
 
-        getChildren().addAll(header, standardSection, advancedPane, classifierSection);
+        getChildren().addAll(header, standardSection, advancedPane, classifiersPane);
     }
 
     public void setOnRemove(Runnable onRemove) {
@@ -397,7 +398,6 @@ public class ChannelCard extends VBox {
     }
 
     private VBox buildClassifierSection(ComboBox<String> channelName) {
-        Label header = new Label("Classifiers");
         classifierList.getChildren().clear();
         for (ChannelClassifierConfig classifier : classifiers) {
             classifierList.getChildren().add(buildClassifierRow(classifier));
@@ -410,16 +410,18 @@ public class ChannelCard extends VBox {
         }, channelName.valueProperty()));
         addClassifier.setOnAction(event -> addClassifierFromChooser());
 
-        VBox section = new VBox(8, header, classifierList, addClassifier);
+        VBox section = new VBox(8, classifierList, addClassifier);
         return section;
     }
 
     private Node buildClassifierRow(ChannelClassifierConfig classifier) {
-        Label nameLabel = new Label(classifier.getName());
+        String baseName = classifier.getName();
+        String fileName = baseName == null || baseName.isBlank() ? "(unnamed).json" : baseName + ".json";
+        Label nameLabel = new Label(fileName);
         nameLabel.setMinWidth(160);
         nameLabel.setMaxWidth(Double.MAX_VALUE);
         TextField annotations = new TextField(formatAnnotations(classifier.getAnnotationsToClassify()));
-        annotations.setPromptText("Regions (opt)");
+        annotations.setPromptText("Restrict to regions (optional)");
         annotations.textProperty().addListener((obs, oldValue, value) -> {
             if (isUpdatingSupplier.getAsBoolean()) {
                 return;
