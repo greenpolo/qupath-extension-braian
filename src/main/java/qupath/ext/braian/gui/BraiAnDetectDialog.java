@@ -5,6 +5,7 @@
 package qupath.ext.braian.gui;
 
 import javafx.animation.PauseTransition;
+import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -33,6 +34,8 @@ import javafx.util.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.braian.config.ProjectsConfig;
+import qupath.ext.braian.runners.ABBAImporterRunner;
+import qupath.ext.braian.runners.BraiAnAnalysisRunner;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.dialogs.Dialogs;
@@ -60,9 +63,12 @@ public class BraiAnDetectDialog {
     private final QuPathGUI qupath;
     private final Stage stage;
     private final BooleanProperty batchMode = new SimpleBooleanProperty(false);
+    private final BooleanProperty batchReady = new SimpleBooleanProperty(false);
+    private final BooleanProperty running = new SimpleBooleanProperty(false);
     private final TextField batchRootField = new TextField();
     private final PauseTransition saveDebounce = new PauseTransition(Duration.millis(500));
     private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService runExecutor = Executors.newSingleThreadExecutor();
     private final ObservableList<String> channelNames = FXCollections.observableArrayList();
     private final List<String> availableImageChannels = new ArrayList<>();
     private ProjectsConfig config;
@@ -76,8 +82,9 @@ public class BraiAnDetectDialog {
         this.stage.setTitle("BraiAnDetect Pipeline Manager");
         this.stage.setWidth(980);
         this.stage.setHeight(820);
+        this.batchReady.bind(batchRootField.textProperty().isNotEmpty());
         this.stage.setOnHidden(event -> {
-            shutdownSaveExecutor();
+            shutdownExecutors();
             if (onClose != null) {
                 onClose.run();
             }
@@ -159,7 +166,8 @@ public class BraiAnDetectDialog {
         VBox actionPanel = new VBox(8);
         Button importCurrentButton = new Button("Import Atlas to Current Image");
         Button importBatchButton = new Button("Import Atlas to Selected Projects");
-        importBatchButton.disableProperty().bind(Bindings.or(batchMode.not(), batchRootField.textProperty().isEmpty()));
+        importCurrentButton.disableProperty().bind(running);
+        importBatchButton.disableProperty().bind(running.or(Bindings.or(batchMode.not(), batchRootField.textProperty().isEmpty())));
 
         importCurrentButton.setOnAction(event -> handleImportCurrent());
         importBatchButton.setOnAction(event -> handleImportBatch());
@@ -179,6 +187,8 @@ public class BraiAnDetectDialog {
                 availableImageChannels,
                 stage,
                 batchMode,
+                batchReady,
+                running,
                 this::handlePreview,
                 this::handleRun,
                 this::scheduleConfigSave,
@@ -192,19 +202,54 @@ public class BraiAnDetectDialog {
     }
 
     private void handleImportCurrent() {
-        logger.info("ABBA import (current image) is not wired yet.");
+        runAsync("ABBA Import", () -> ABBAImporterRunner.runCurrentImage(qupath));
     }
 
     private void handleImportBatch() {
-        logger.info("ABBA batch import is not wired yet.");
+        Path rootPath = resolveBatchRoot();
+        if (rootPath == null) {
+            Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before running batch import.");
+            return;
+        }
+        runAsync("ABBA Import", () -> ABBAImporterRunner.runBatch(qupath, rootPath));
     }
 
     private void handlePreview() {
-        logger.info("Preview run is not wired yet.");
+        if (!flushConfigNow()) {
+            return;
+        }
+        runAsync("Preview", () -> BraiAnAnalysisRunner.runPreview(qupath));
     }
 
     private void handleRun() {
-        logger.info("Run analysis is not wired yet.");
+        if (!flushConfigNow()) {
+            return;
+        }
+        if (batchMode.get()) {
+            Path rootPath = resolveBatchRoot();
+            if (rootPath == null) {
+                Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before running batch analysis.");
+                return;
+            }
+            runAsync("Run Batch Analysis", () -> BraiAnAnalysisRunner.runBatch(qupath, rootPath));
+        } else {
+            runAsync("Run Analysis", () -> BraiAnAnalysisRunner.runProject(qupath));
+        }
+    }
+
+    private boolean flushConfigNow() {
+        saveDebounce.stop();
+        if (configPath == null) {
+            Dialogs.showErrorMessage("BraiAnDetect", "No configuration path is available. Select a valid project or batch folder.");
+            return false;
+        }
+        try {
+            writeConfigNow(ProjectsConfig.toYaml(config));
+            return true;
+        } catch (IOException e) {
+            Dialogs.showErrorMessage("BraiAnDetect", "Failed to save BraiAn.yml: " + e.getMessage());
+            return false;
+        }
     }
 
     private void scheduleConfigSave() {
@@ -309,9 +354,48 @@ public class BraiAnDetectDialog {
         return resolveProjectDirectory();
     }
 
-    private void shutdownSaveExecutor() {
+    private Path resolveBatchRoot() {
+        String root = batchRootField.getText();
+        if (root == null || root.isBlank()) {
+            return null;
+        }
+        Path path = Path.of(root);
+        if (!Files.isDirectory(path)) {
+            return null;
+        }
+        return path;
+    }
+
+    private void runAsync(String title, Runnable task) {
+        if (running.get()) {
+            return;
+        }
+        running.set(true);
+        runExecutor.execute(() -> {
+            try {
+                task.run();
+            } catch (Exception e) {
+                logger.error("{} failed", title, e);
+                showError(title, e);
+            } finally {
+                Platform.runLater(() -> running.set(false));
+            }
+        });
+    }
+
+    private void showError(String title, Exception e) {
+        String message = e.getMessage();
+        if (message == null || message.isBlank()) {
+            message = "Unexpected error. See log for details.";
+        }
+        String finalMessage = message;
+        Platform.runLater(() -> Dialogs.showErrorMessage(title, finalMessage));
+    }
+
+    private void shutdownExecutors() {
         saveDebounce.stop();
         saveExecutor.shutdown();
+        runExecutor.shutdown();
     }
 
     private Path resolveProjectDirectory() {

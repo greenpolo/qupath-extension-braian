@@ -37,6 +37,8 @@ public class ExperimentPane extends VBox {
     private final List<String> availableImageChannels;
     private final Stage owner;
     private final BooleanProperty batchMode;
+    private final BooleanProperty batchReady;
+    private final BooleanProperty running;
     private final Runnable onPreview;
     private final Runnable onRun;
     private final Runnable onConfigChanged;
@@ -55,6 +57,8 @@ public class ExperimentPane extends VBox {
                           List<String> availableImageChannels,
                           Stage owner,
                           BooleanProperty batchMode,
+                          BooleanProperty batchReady,
+                          BooleanProperty running,
                           Runnable onPreview,
                           Runnable onRun,
                           Runnable onConfigChanged,
@@ -64,6 +68,8 @@ public class ExperimentPane extends VBox {
         this.availableImageChannels = availableImageChannels;
         this.owner = owner;
         this.batchMode = batchMode;
+        this.batchReady = batchReady;
+        this.running = running;
         this.onPreview = Objects.requireNonNullElse(onPreview, () -> {});
         this.onRun = Objects.requireNonNullElse(onRun, () -> {});
         this.onConfigChanged = Objects.requireNonNullElse(onConfigChanged, () -> {});
@@ -133,6 +139,7 @@ public class ExperimentPane extends VBox {
         Label header = new Label("Channel Configuration");
         channelStack.setSpacing(12);
         addChannelButton.setOnAction(event -> addChannelCard());
+        addChannelButton.disableProperty().bind(running);
         section.getChildren().addAll(header, channelStack, addChannelButton);
         return section;
     }
@@ -143,6 +150,10 @@ public class ExperimentPane extends VBox {
         Button previewButton = new Button("Preview on Current Image");
         Button runButton = new Button("Run Analysis");
         runButton.textProperty().bind(Bindings.when(batchMode).then("Run Batch Analysis").otherwise("Run Analysis"));
+        var noChannels = Bindings.isEmpty(channelNames);
+        var batchMissing = batchMode.and(batchReady.not());
+        previewButton.disableProperty().bind(running.or(noChannels));
+        runButton.disableProperty().bind(running.or(noChannels).or(batchMissing));
         previewButton.setOnAction(event -> onPreview.run());
         runButton.setOnAction(event -> onRun.run());
         HBox.setHgrow(runButton, Priority.NEVER);
