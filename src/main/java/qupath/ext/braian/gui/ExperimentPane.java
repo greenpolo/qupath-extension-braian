@@ -46,6 +46,7 @@ public class ExperimentPane extends VBox {
     private final Supplier<Path> projectDirSupplier;
     private final VBox channelStack = new VBox(12);
     private final TextField classForDetectionsField = new TextField();
+    private final TextField atlasNameField = new TextField();
     private final CheckBox detectionsCheckBox = new CheckBox("Enforce Co-localization");
     private final ComboBox<String> controlChannelCombo = new ComboBox<>();
     private final Button addChannelButton = new Button("+ Add Channel");
@@ -109,6 +110,30 @@ public class ExperimentPane extends VBox {
             notifyConfigChanged();
         });
 
+        atlasNameField.setPromptText("Atlas name (e.g. allen_mouse_10um_java)");
+        atlasNameField.textProperty().addListener((obs, oldValue, value) -> {
+            if (isUpdating) {
+                return;
+            }
+            String trimmed = value != null ? value.trim() : "";
+            config.setAtlasName(trimmed.isEmpty() ? "allen_mouse_10um_java" : trimmed);
+            notifyConfigChanged();
+        });
+        
+        // Auto-detect atlas from hierarchy if not already set or default
+        if (qupath.lib.gui.QuPathGUI.getInstance() != null) {
+            var viewer = qupath.lib.gui.QuPathGUI.getInstance().getViewer();
+            if (viewer != null && viewer.getImageData() != null) {
+                var root = viewer.getImageData().getHierarchy().getRootObject();
+                 if (root != null && root.getPathClass() != null) {
+                    String detected = root.getPathClass().getName();
+                    if (config.getAtlasName() == null || config.getAtlasName().equals("allen_mouse_10um_java")) {
+                        config.setAtlasName(detected);
+                    }
+                }
+            }
+        }
+
         HBox detectionsCheckRow = new HBox(12);
         detectionsCheckRow.setAlignment(Pos.CENTER_LEFT);
         detectionsCheckBox.selectedProperty().addListener((obs, oldValue, selected) -> {
@@ -130,7 +155,10 @@ public class ExperimentPane extends VBox {
         });
         detectionsCheckRow.getChildren().addAll(detectionsCheckBox, controlChannelCombo);
 
-        section.getChildren().addAll(header, classForDetectionsField, new Label("Cross-channel logic"), detectionsCheckRow);
+        section.getChildren().addAll(header, 
+                new Label("Region Filter:"), classForDetectionsField,
+                new Label("Atlas Name (Auto-detected):"), atlasNameField,
+                new Label("Cross-channel logic"), detectionsCheckRow);
         return section;
     }
 
@@ -164,6 +192,7 @@ public class ExperimentPane extends VBox {
     private void refreshFromConfig() {
         isUpdating = true;
         classForDetectionsField.setText(Optional.ofNullable(config.getClassForDetections()).orElse(""));
+        atlasNameField.setText(Optional.ofNullable(config.getAtlasName()).orElse("allen_mouse_10um_java"));
         DetectionsCheckConfig detectionsCheck = config.getDetectionsCheck();
         detectionsCheckBox.setSelected(detectionsCheck.getApply());
         rebuildChannelCards();

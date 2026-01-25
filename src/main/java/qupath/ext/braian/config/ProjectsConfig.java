@@ -85,19 +85,6 @@ public class ProjectsConfig {
         Yaml yaml = new Yaml(representer, options);
         return yaml.dumpAsMap(config);
     }
-
-    private String classForDetections = null;
-    private DetectionsCheckConfig detectionsCheck = new DetectionsCheckConfig();
-    private List<ChannelDetectionsConfig> channelDetections = List.of();
-
-    public String getClassForDetections() {
-        return classForDetections;
-    }
-
-    /**
-     * Finds (or creates) the annotations chosen for computing the detections, accordingly to the configuration file.
-     * It reads the value of 'classForDetections' in the YAML and searches all annotations having the appointed classification
-     * @param hierarchy where to search the annotations in
      * @return the annotations to be used for computing the detections
      * @see qupath.ext.braian.ChannelDetections
      */

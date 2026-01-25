@@ -198,13 +198,18 @@ public final class BraiAnAnalysisRunner {
             return;
         }
 
-        if (!AtlasManager.isImported(ATLAS_NAME, hierarchy)) {
-            logger.warn("No atlas '{}' imported for {}", ATLAS_NAME, entry.getImageName());
+        String atlasName = config.getAtlasName();
+        if (atlasName == null) {
+            atlasName = "allen_mouse_10um_java";
+        }
+
+        if (!AtlasManager.isImported(atlasName, hierarchy)) {
+            logger.warn("No atlas '{}' imported for {}", atlasName, entry.getImageName());
             return;
         }
 
         try {
-            AtlasManager atlas = new AtlasManager(ATLAS_NAME, hierarchy);
+            AtlasManager atlas = new AtlasManager(atlasName, hierarchy);
             atlas.fixExclusions();
             String imageName = sanitizeFileName(entry.getImageName());
             Path projectDir = Projects.getBaseDirectory(project).toPath();
