@@ -13,7 +13,6 @@ import org.yaml.snakeyaml.introspector.BeanAccess;
 import org.yaml.snakeyaml.introspector.Property;
 import org.yaml.snakeyaml.introspector.PropertyUtils;
 import org.yaml.snakeyaml.representer.Representer;
-import qupath.ext.braian.BraiAnExtension;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
