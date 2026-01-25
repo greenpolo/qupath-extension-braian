@@ -6,7 +6,7 @@ package qupath.ext.braian.runners;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.braian.config.ProjectsConfig;
+
 import qupath.fx.utils.FXUtils;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.commands.Commands;
@@ -25,7 +25,7 @@ import java.util.List;
 
 public final class ABBAImporterRunner {
     private static final Logger logger = LoggerFactory.getLogger(ABBAImporterRunner.class);
-    private static final String ATLAS_NAME = "allen_mouse_10um_java";
+
     private static final String NAMING_PROPERTY = "acronym";
     private static final boolean SPLIT_LEFT_RIGHT = true;
     private static final boolean OVERWRITE = true;
@@ -42,18 +42,7 @@ public final class ABBAImporterRunner {
             throw new IllegalStateException("No image is currently open.");
         }
 
-        // Load config from project or default
-        ProjectsConfig config = null;
-        if (qupath.getProject() != null) {
-            try {
-                config = ProjectsConfig.read("BraiAn.yml");
-            } catch (Exception e) {
-                logger.warn("Could not load BraiAn.yml, using default atlas.");
-            }
-        }
-        String atlasName = (config != null) ? config.getAtlasName() : "allen_mouse_10um_java";
-
-        importAtlas(imageData, atlasName);
+        importAtlas(imageData);
         Project<BufferedImage> project = qupath.getProject();
         if (project != null) {
             ProjectImageEntry<BufferedImage> entry = project.getEntry(imageData);
@@ -79,14 +68,7 @@ public final class ABBAImporterRunner {
             throw new IllegalStateException("No QuPath projects found in " + rootPath);
         }
 
-        // Load config from batch root directory
-        ProjectsConfig config = null;
-        try {
-            config = ProjectsConfig.read(rootPath.resolve("BraiAn.yml"));
-        } catch (Exception e) {
-            logger.warn("Could not load BraiAn.yml from batch root, using default atlas.");
-        }
-        final String atlasName = (config != null) ? config.getAtlasName() : "allen_mouse_10um_java";
+        // BraiAn Config is not needed for Atlas import
 
         for (Path projectFile : projectFiles) {
             Project<BufferedImage> project;
@@ -108,7 +90,7 @@ public final class ABBAImporterRunner {
                 }
                 try {
                     QPEx.setBatchProjectAndImage(project, imageData);
-                    importAtlas(imageData, atlasName);
+                    importAtlas(imageData);
                     entry.saveImageData(imageData);
                 } catch (Exception e) {
                     logger.error("Failed to import atlas for {}: {}", entry.getImageName(), e.getMessage());
@@ -127,13 +109,10 @@ public final class ABBAImporterRunner {
         }
     }
 
-    private static void importAtlas(ImageData<BufferedImage> imageData, String atlasName) {
+    private static void importAtlas(ImageData<BufferedImage> imageData) {
         imageData.setImageType(ImageData.ImageType.FLUORESCENCE);
         imageData.getHierarchy().clearAll();
-        if (atlasName == null || atlasName.isBlank()) {
-            atlasName = "allen_mouse_10um_java";
-        }
-        AbbaReflectionBridge.loadWarpedAtlasAnnotations(imageData, atlasName, NAMING_PROPERTY, SPLIT_LEFT_RIGHT,
+        AbbaReflectionBridge.loadWarpedAtlasAnnotations(imageData, null, NAMING_PROPERTY, SPLIT_LEFT_RIGHT,
                 OVERWRITE);
     }
 

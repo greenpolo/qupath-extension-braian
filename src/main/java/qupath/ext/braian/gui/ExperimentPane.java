@@ -54,26 +54,29 @@ public class ExperimentPane extends VBox {
     private boolean isUpdating = false;
 
     public ExperimentPane(ProjectsConfig config,
-                          ObservableList<String> channelNames,
-                          List<String> availableImageChannels,
-                          Stage owner,
-                          BooleanProperty batchMode,
-                          BooleanProperty batchReady,
-                          BooleanProperty running,
-                          Runnable onPreview,
-                          Runnable onRun,
-                          Runnable onConfigChanged,
-                          Supplier<Path> configRootSupplier,
-                          Supplier<Path> projectDirSupplier) {
+            ObservableList<String> channelNames,
+            List<String> availableImageChannels,
+            Stage owner,
+            BooleanProperty batchMode,
+            BooleanProperty batchReady,
+            BooleanProperty running,
+            Runnable onPreview,
+            Runnable onRun,
+            Runnable onConfigChanged,
+            Supplier<Path> configRootSupplier,
+            Supplier<Path> projectDirSupplier) {
         this.channelNames = channelNames;
         this.availableImageChannels = availableImageChannels;
         this.owner = owner;
         this.batchMode = batchMode;
         this.batchReady = batchReady;
         this.running = running;
-        this.onPreview = Objects.requireNonNullElse(onPreview, () -> {});
-        this.onRun = Objects.requireNonNullElse(onRun, () -> {});
-        this.onConfigChanged = Objects.requireNonNullElse(onConfigChanged, () -> {});
+        this.onPreview = Objects.requireNonNullElse(onPreview, () -> {
+        });
+        this.onRun = Objects.requireNonNullElse(onRun, () -> {
+        });
+        this.onConfigChanged = Objects.requireNonNullElse(onConfigChanged, () -> {
+        });
         this.configRootSupplier = configRootSupplier;
         this.projectDirSupplier = projectDirSupplier;
 
@@ -85,8 +88,7 @@ public class ExperimentPane extends VBox {
                 new Separator(),
                 buildChannelSection(),
                 new Separator(),
-                buildCommandBar()
-        );
+                buildCommandBar());
 
         setConfig(config);
     }
@@ -119,20 +121,9 @@ public class ExperimentPane extends VBox {
             config.setAtlasName(trimmed.isEmpty() ? "allen_mouse_10um_java" : trimmed);
             notifyConfigChanged();
         });
-        
+
         // Auto-detect atlas from hierarchy if not already set or default
-        if (qupath.lib.gui.QuPathGUI.getInstance() != null) {
-            var viewer = qupath.lib.gui.QuPathGUI.getInstance().getViewer();
-            if (viewer != null && viewer.getImageData() != null) {
-                var root = viewer.getImageData().getHierarchy().getRootObject();
-                 if (root != null && root.getPathClass() != null) {
-                    String detected = root.getPathClass().getName();
-                    if (config.getAtlasName() == null || config.getAtlasName().equals("allen_mouse_10um_java")) {
-                        config.setAtlasName(detected);
-                    }
-                }
-            }
-        }
+        autoDetectAtlas();
 
         HBox detectionsCheckRow = new HBox(12);
         detectionsCheckRow.setAlignment(Pos.CENTER_LEFT);
@@ -145,7 +136,8 @@ public class ExperimentPane extends VBox {
         });
         controlChannelCombo.setItems(channelNames);
         controlChannelCombo.setPromptText("Control channel");
-        controlChannelCombo.disableProperty().bind(Bindings.or(detectionsCheckBox.selectedProperty().not(), Bindings.isEmpty(channelNames)));
+        controlChannelCombo.disableProperty()
+                .bind(Bindings.or(detectionsCheckBox.selectedProperty().not(), Bindings.isEmpty(channelNames)));
         controlChannelCombo.valueProperty().addListener((obs, oldValue, value) -> {
             if (isUpdating) {
                 return;
@@ -155,7 +147,7 @@ public class ExperimentPane extends VBox {
         });
         detectionsCheckRow.getChildren().addAll(detectionsCheckBox, controlChannelCombo);
 
-        section.getChildren().addAll(header, 
+        section.getChildren().addAll(header,
                 new Label("Region Filter:"), classForDetectionsField,
                 new Label("Atlas Name (Auto-detected):"), atlasNameField,
                 new Label("Cross-channel logic"), detectionsCheckRow);
@@ -230,8 +222,7 @@ public class ExperimentPane extends VBox {
                 projectDirSupplier,
                 this::notifyConfigChanged,
                 this::refreshChannelNames,
-                () -> isUpdating
-        );
+                () -> isUpdating);
         card.setOnRemove(() -> removeChannelCard(card, channelConfig));
         channelStack.getChildren().add(card);
     }
@@ -285,6 +276,22 @@ public class ExperimentPane extends VBox {
     private void notifyConfigChanged() {
         if (!isUpdating) {
             onConfigChanged.run();
+        }
+    }
+
+    public void autoDetectAtlas() {
+        if (qupath.lib.gui.QuPathGUI.getInstance() != null) {
+            var viewer = qupath.lib.gui.QuPathGUI.getInstance().getViewer();
+            if (viewer != null && viewer.getImageData() != null) {
+                var root = viewer.getImageData().getHierarchy().getRootObject();
+                if (root != null && root.getPathClass() != null) {
+                    String detected = root.getPathClass().getName();
+                    if (config.getAtlasName() == null || config.getAtlasName().equals("allen_mouse_10um_java")) {
+                        config.setAtlasName(detected);
+                        notifyConfigChanged();
+                    }
+                }
+            }
         }
     }
 }

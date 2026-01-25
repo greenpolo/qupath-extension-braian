@@ -167,13 +167,15 @@ public class BraiAnDetectDialog {
         Button importCurrentButton = new Button("Import Atlas to Current Image");
         Button importBatchButton = new Button("Import Atlas to Selected Projects");
         importCurrentButton.disableProperty().bind(running);
-        importBatchButton.disableProperty().bind(running.or(Bindings.or(batchMode.not(), batchRootField.textProperty().isEmpty())));
+        importBatchButton.disableProperty()
+                .bind(running.or(Bindings.or(batchMode.not(), batchRootField.textProperty().isEmpty())));
 
         importCurrentButton.setOnAction(event -> handleImportCurrent());
         importBatchButton.setOnAction(event -> handleImportBatch());
         actionPanel.getChildren().addAll(importCurrentButton, importBatchButton);
 
-        Label warningLabel = new Label("Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
+        Label warningLabel = new Label(
+                "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
         warningLabel.getStyleClass().add("warning");
 
         container.getChildren().addAll(scopeRow, batchChooserRow, new Separator(), actionPanel, warningLabel);
@@ -193,8 +195,7 @@ public class BraiAnDetectDialog {
                 this::handleRun,
                 this::scheduleConfigSave,
                 this::resolveConfigRoot,
-                this::resolveProjectDirectory
-        );
+                this::resolveProjectDirectory);
         ScrollPane scrollPane = new ScrollPane(experimentPane);
         scrollPane.setFitToWidth(true);
         scrollPane.setFitToHeight(true);
@@ -202,7 +203,10 @@ public class BraiAnDetectDialog {
     }
 
     private void handleImportCurrent() {
-        runAsync("ABBA Import", () -> ABBAImporterRunner.runCurrentImage(qupath));
+        runAsync("ABBA Import", () -> {
+            ABBAImporterRunner.runCurrentImage(qupath);
+            Platform.runLater(() -> experimentPane.autoDetectAtlas());
+        });
     }
 
     private void handleImportBatch() {
@@ -240,7 +244,8 @@ public class BraiAnDetectDialog {
     private boolean flushConfigNow() {
         saveDebounce.stop();
         if (configPath == null) {
-            Dialogs.showErrorMessage("BraiAnDetect", "No configuration path is available. Select a valid project or batch folder.");
+            Dialogs.showErrorMessage("BraiAnDetect",
+                    "No configuration path is available. Select a valid project or batch folder.");
             return false;
         }
         try {
