@@ -15,8 +15,10 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ListView;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
 import javafx.scene.control.Tab;
@@ -37,6 +39,7 @@ import qupath.ext.braian.config.ProjectsConfig;
 import qupath.ext.braian.runners.ABBAImporterRunner;
 import qupath.ext.braian.runners.BraiAnAnalysisRunner;
 import qupath.ext.braian.utils.BraiAn;
+import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.dialogs.Dialogs;
 import qupath.lib.images.ImageData;
@@ -51,7 +54,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -70,11 +75,41 @@ public class BraiAnDetectDialog {
     private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService runExecutor = Executors.newSingleThreadExecutor();
     private final ObservableList<String> channelNames = FXCollections.observableArrayList();
+    private final ObservableList<DiscoveredProject> discoveredProjects = FXCollections.observableArrayList();
     private final List<String> availableImageChannels = new ArrayList<>();
     private ProjectsConfig config;
     private Path configPath;
     private ExperimentPane experimentPane;
     private Runnable onClose;
+
+    private static final class DiscoveredProject {
+        private final String name;
+        private final Path projectFile;
+        private final BooleanProperty selected = new SimpleBooleanProperty(true);
+
+        private DiscoveredProject(String name, Path projectFile, boolean selected) {
+            this.name = name;
+            this.projectFile = projectFile;
+            this.selected.set(selected);
+        }
+
+        public Path getProjectFile() {
+            return projectFile;
+        }
+
+        public BooleanProperty selectedProperty() {
+            return selected;
+        }
+
+        public boolean isSelected() {
+            return selected.get();
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
+    }
 
     public BraiAnDetectDialog(QuPathGUI qupath) {
         this.qupath = qupath;
@@ -147,11 +182,13 @@ public class BraiAnDetectDialog {
 
         actionPanel.getChildren().addAll(importCurrentButton, importProjectButton, importExperimentButton);
 
+        VBox projectListPanel = buildProjectListPanel();
+
         Label warningLabel = new Label(
                 "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
         warningLabel.getStyleClass().add("warning");
 
-        container.getChildren().addAll(actionPanel, warningLabel);
+        container.getChildren().addAll(actionPanel, projectListPanel, warningLabel);
         return new Tab("Atlas Import", container);
     }
 
@@ -179,6 +216,7 @@ public class BraiAnDetectDialog {
             if (selected) {
                 batchMode.set(true);
                 updateConfigForContext();
+                refreshDiscoveredProjects();
             }
         });
 
@@ -189,6 +227,7 @@ public class BraiAnDetectDialog {
         batchRootField.textProperty().addListener((obs, oldValue, value) -> {
             if (batchMode.get()) {
                 updateConfigForContext();
+                refreshDiscoveredProjects();
             }
         });
         Button browseButton = new Button("Browse");
@@ -198,7 +237,8 @@ public class BraiAnDetectDialog {
         batchChooserRow.managedProperty().bind(batchMode);
         batchChooserRow.visibleProperty().bind(batchMode);
 
-        scopeSection.getChildren().addAll(scopeRow, batchChooserRow, new Separator());
+        VBox projectListPanel = buildProjectListPanel();
+        scopeSection.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, new Separator());
 
         this.experimentPane = new ExperimentPane(
                 config,
@@ -247,8 +287,14 @@ public class BraiAnDetectDialog {
             Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before importing to an experiment.");
             return;
         }
-        Path finalRootPath = rootPath;
-        runAsync("ABBA Import", () -> ABBAImporterRunner.runBatch(qupath, finalRootPath));
+
+        refreshDiscoveredProjects();
+        List<Path> selectedProjects = getSelectedProjectFiles();
+        if (selectedProjects.isEmpty()) {
+            Dialogs.showErrorMessage("BraiAnDetect", "Select at least one project to import.");
+            return;
+        }
+        runAsync("ABBA Import", () -> ABBAImporterRunner.runBatch(qupath, selectedProjects));
     }
 
     private void handlePreview() {
@@ -268,10 +314,61 @@ public class BraiAnDetectDialog {
                 Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before running batch analysis.");
                 return;
             }
-            runAsync("Run Batch Analysis", () -> BraiAnAnalysisRunner.runBatch(qupath, rootPath));
+            List<Path> selectedProjects = getSelectedProjectFiles();
+            if (selectedProjects.isEmpty()) {
+                Dialogs.showErrorMessage("BraiAnDetect", "Select at least one project to analyze.");
+                return;
+            }
+            runAsync("Run Batch Analysis", () -> BraiAnAnalysisRunner.runBatch(qupath, rootPath, selectedProjects));
         } else {
             runAsync("Run Analysis", () -> BraiAnAnalysisRunner.runProject(qupath));
         }
+    }
+
+    private VBox buildProjectListPanel() {
+        ListView<DiscoveredProject> listView = new ListView<>(discoveredProjects);
+        listView.setCellFactory(CheckBoxListCell.forListView(DiscoveredProject::selectedProperty));
+        listView.setPrefHeight(160);
+        listView.managedProperty().bind(batchMode);
+        listView.visibleProperty().bind(batchMode);
+
+        Label label = new Label("Discovered projects");
+        label.managedProperty().bind(batchMode);
+        label.visibleProperty().bind(batchMode);
+
+        VBox panel = new VBox(8, label, listView);
+        panel.managedProperty().bind(batchMode);
+        panel.visibleProperty().bind(batchMode);
+        return panel;
+    }
+
+    private void refreshDiscoveredProjects() {
+        Path rootPath = resolveBatchRoot();
+        if (rootPath == null) {
+            discoveredProjects.clear();
+            return;
+        }
+
+        Map<Path, Boolean> selectedByPath = new HashMap<>();
+        for (DiscoveredProject project : discoveredProjects) {
+            selectedByPath.put(project.getProjectFile(), project.isSelected());
+        }
+
+        List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
+        List<DiscoveredProject> refreshed = new ArrayList<>();
+        for (Path projectFile : projectFiles) {
+            String name = projectFile.getParent().getFileName().toString();
+            boolean selected = selectedByPath.getOrDefault(projectFile, true);
+            refreshed.add(new DiscoveredProject(name, projectFile, selected));
+        }
+        discoveredProjects.setAll(refreshed);
+    }
+
+    private List<Path> getSelectedProjectFiles() {
+        return discoveredProjects.stream()
+                .filter(DiscoveredProject::isSelected)
+                .map(DiscoveredProject::getProjectFile)
+                .toList();
     }
 
     private boolean flushConfigNow() {

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import qupath.fx.utils.FXUtils;
+import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.commands.Commands;
 import qupath.lib.gui.scripting.QPEx;
@@ -99,9 +100,20 @@ public final class ABBAImporterRunner {
         if (rootPath == null || !Files.isDirectory(rootPath)) {
             throw new IllegalArgumentException("Invalid projects directory: " + rootPath);
         }
-        List<Path> projectFiles = findProjectFiles(rootPath);
+        List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
         if (projectFiles.isEmpty()) {
             throw new IllegalStateException("No QuPath projects found in " + rootPath);
+        }
+
+        runBatch(qupath, projectFiles);
+    }
+
+    public static void runBatch(QuPathGUI qupath, List<Path> projectFiles) {
+        if (!AbbaReflectionBridge.isAvailable()) {
+            throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());
+        }
+        if (projectFiles == null || projectFiles.isEmpty()) {
+            throw new IllegalArgumentException("No project files provided.");
         }
 
         // BraiAn Config is not needed for Atlas import
@@ -160,26 +172,5 @@ public final class ABBAImporterRunner {
         }
     }
 
-    private static List<Path> findProjectFiles(Path rootPath) {
-        List<Path> projectFiles = new ArrayList<>();
-        try (var dirStream = Files.list(rootPath)) {
-            dirStream.filter(Files::isDirectory).forEach(dir -> resolveProjectFile(dir).ifPresent(projectFiles::add));
-        } catch (IOException e) {
-            logger.warn("Failed to scan projects directory {}: {}", rootPath, e.getMessage());
-        }
-        return projectFiles;
-    }
-
-    private static java.util.Optional<Path> resolveProjectFile(Path dir) {
-        String extension = ProjectIO.DEFAULT_PROJECT_EXTENSION;
-        Path defaultProject = dir.resolve("project." + extension);
-        if (Files.exists(defaultProject)) {
-            return java.util.Optional.of(defaultProject);
-        }
-        try (var stream = Files.list(dir)) {
-            return stream.filter(path -> path.getFileName().toString().endsWith("." + extension)).findFirst();
-        } catch (IOException e) {
-            return java.util.Optional.empty();
-        }
-    }
+    // Project file discovery is delegated to ProjectDiscoveryService.
 }

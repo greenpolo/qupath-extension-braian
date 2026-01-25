@@ -15,6 +15,7 @@ import qupath.ext.braian.OverlappingDetections;
 import qupath.ext.braian.config.ChannelClassifierConfig;
 import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.ProjectsConfig;
+import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.commands.Commands;
@@ -71,9 +72,16 @@ public final class BraiAnAnalysisRunner {
         if (rootPath == null || !Files.isDirectory(rootPath)) {
             throw new IllegalArgumentException("Invalid projects directory: " + rootPath);
         }
+        List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
+        runBatch(qupath, rootPath, projectFiles);
+    }
+
+    public static void runBatch(QuPathGUI qupath, Path rootPath, List<Path> projectFiles) {
+        if (rootPath == null || !Files.isDirectory(rootPath)) {
+            throw new IllegalArgumentException("Invalid projects directory: " + rootPath);
+        }
         ProjectsConfig config = loadConfig(rootPath.resolve(CONFIG_FILENAME));
-        List<Path> projectFiles = findProjectFiles(rootPath);
-        if (projectFiles.isEmpty()) {
+        if (projectFiles == null || projectFiles.isEmpty()) {
             throw new IllegalStateException("No QuPath projects found in " + rootPath);
         }
 
@@ -270,16 +278,6 @@ public final class BraiAnAnalysisRunner {
         return sanitized;
     }
 
-    private static List<Path> findProjectFiles(Path rootPath) {
-        List<Path> projectFiles = new ArrayList<>();
-        try (var dirStream = Files.list(rootPath)) {
-            dirStream.filter(Files::isDirectory).forEach(dir -> resolveProjectFile(dir).ifPresent(projectFiles::add));
-        } catch (IOException e) {
-            logger.warn("Failed to scan projects directory {}: {}", rootPath, e.getMessage());
-        }
-        return projectFiles;
-    }
-
     private static void applyChannelRenaming(ImageData<BufferedImage> imageData, ProjectsConfig config) {
         var channelConfigs = config.getChannelDetections();
         if (channelConfigs == null || channelConfigs.isEmpty()) {
@@ -334,16 +332,5 @@ public final class BraiAnAnalysisRunner {
         }
     }
 
-    private static Optional<Path> resolveProjectFile(Path dir) {
-        String extension = ProjectIO.DEFAULT_PROJECT_EXTENSION;
-        Path defaultProject = dir.resolve("project." + extension);
-        if (Files.exists(defaultProject)) {
-            return Optional.of(defaultProject);
-        }
-        try (var stream = Files.list(dir)) {
-            return stream.filter(path -> path.getFileName().toString().endsWith("." + extension)).findFirst();
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-    }
+    // Project file discovery is delegated to ProjectDiscoveryService.
 }
