@@ -5,9 +5,14 @@
 package qupath.ext.braian.config;
 
 import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.error.YAMLException;
+import org.yaml.snakeyaml.introspector.BeanAccess;
+import org.yaml.snakeyaml.introspector.Property;
+import org.yaml.snakeyaml.introspector.PropertyUtils;
+import org.yaml.snakeyaml.representer.Representer;
 import qupath.ext.braian.BraiAnExtension;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.lib.objects.PathAnnotationObject;
@@ -39,6 +44,10 @@ public class ProjectsConfig {
      */
     public static ProjectsConfig read(String yamlFileName) throws IOException, YAMLException {
         Path filePath = BraiAn.resolvePath(yamlFileName);
+        return read(filePath);
+    }
+
+    public static ProjectsConfig read(Path filePath) throws IOException, YAMLException {
         getLogger().info("using '{}' configuration file.", filePath);
         String configStream = Files.readString(filePath, StandardCharsets.UTF_8);
 
@@ -49,6 +58,33 @@ public class ProjectsConfig {
             getLogger().error("Could not interpret the file '{}'. Please check that it is correctly formatted!", filePath);
             throw e;
         }
+    }
+
+    public static String toYaml(ProjectsConfig config) {
+        DumperOptions options = new DumperOptions();
+        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+        options.setPrettyFlow(true);
+        options.setIndent(2);
+        options.setIndicatorIndent(2);
+        options.setDefaultScalarStyle(DumperOptions.ScalarStyle.PLAIN);
+
+        Representer representer = new Representer(options);
+        PropertyUtils propertyUtils = new PropertyUtils() {
+            @Override
+            protected java.util.Set<Property> createPropertySet(Class<?> type, BeanAccess bAccess) {
+                var properties = super.createPropertySet(type, bAccess);
+                if (type == WatershedCellDetectionConfig.class) {
+                    properties.removeIf(property -> "detectionImage".equals(property.getName()));
+                }
+                return properties;
+            }
+        };
+        propertyUtils.setSkipMissingProperties(true);
+        representer.setPropertyUtils(propertyUtils);
+        representer.getPropertyUtils().setSkipMissingProperties(true);
+
+        Yaml yaml = new Yaml(representer, options);
+        return yaml.dumpAsMap(config);
     }
 
     private String classForDetections = null;
