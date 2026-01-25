@@ -91,7 +91,8 @@ public final class BraiAnAnalysisRunner {
         }
     }
 
-    private static void runProjectImages(QuPathGUI qupath, Project<BufferedImage> project, ProjectsConfig config, boolean export) {
+    private static void runProjectImages(QuPathGUI qupath, Project<BufferedImage> project, ProjectsConfig config,
+            boolean export) {
         for (ProjectImageEntry<BufferedImage> entry : project.getImageList()) {
             ImageData<BufferedImage> imageData;
             try {
@@ -119,17 +120,18 @@ public final class BraiAnAnalysisRunner {
     }
 
     private static void processImage(ImageData<BufferedImage> imageData,
-                                     Project<BufferedImage> project,
-                                     ProjectImageEntry<BufferedImage> entry,
-                                     ProjectsConfig config,
-                                     boolean export) {
+            Project<BufferedImage> project,
+            ProjectImageEntry<BufferedImage> entry,
+            ProjectsConfig config,
+            boolean export) {
         applyChannelRenaming(imageData, config);
 
         var hierarchy = imageData.getHierarchy();
         Collection<PathAnnotationObject> annotations = config.getAnnotationsForDetections(hierarchy);
 
         List<ChannelDetections> allDetections = new ArrayList<>();
-        List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections()).orElse(List.of());
+        List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections())
+                .orElse(List.of());
         for (ChannelDetectionsConfig detectionsConfig : channelConfigs) {
             String name = detectionsConfig.getName();
             if (name == null || name.isBlank()) {
@@ -137,7 +139,8 @@ public final class BraiAnAnalysisRunner {
             }
             try {
                 ImageChannelTools channel = new ImageChannelTools(name, imageData);
-                ChannelDetections detections = new ChannelDetections(channel, annotations, detectionsConfig.getParameters(), hierarchy);
+                ChannelDetections detections = new ChannelDetections(channel, annotations,
+                        detectionsConfig.getParameters(), hierarchy);
                 allDetections.add(detections);
             } catch (IllegalArgumentException e) {
                 logger.warn("Skipping {}: {}", name, e.getMessage());
@@ -214,7 +217,8 @@ public final class BraiAnAnalysisRunner {
             String imageName = sanitizeFileName(entry.getImageName());
             Path projectDir = Projects.getBaseDirectory(project).toPath();
             Path resultsPath = projectDir.resolve("results").resolve(imageName + "_regions.tsv");
-            Path exclusionsPath = projectDir.resolve("regions_to_exclude").resolve(imageName + "_regions_to_exclude.txt");
+            Path exclusionsPath = projectDir.resolve("regions_to_exclude")
+                    .resolve(imageName + "_regions_to_exclude.txt");
             atlas.saveResults(concat(allDetections, overlaps), resultsPath.toFile());
             atlas.saveExcludedRegions(exclusionsPath.toFile());
         } catch (RuntimeException e) {
@@ -246,7 +250,8 @@ public final class BraiAnAnalysisRunner {
         }
     }
 
-    private static List<AbstractDetections> concat(List<ChannelDetections> detections, List<OverlappingDetections> overlaps) {
+    private static List<AbstractDetections> concat(List<ChannelDetections> detections,
+            List<OverlappingDetections> overlaps) {
         List<AbstractDetections> merged = new ArrayList<>(detections);
         for (OverlappingDetections overlap : overlaps) {
             merged.add(overlap);
@@ -292,7 +297,7 @@ public final class BraiAnAnalysisRunner {
         for (ChannelDetectionsConfig chConfig : channelConfigs) {
             int inputId = chConfig.getInputChannelID(); // 1-based
             String targetName = chConfig.getName();
-            
+
             if (inputId > 0 && inputId <= currentNames.size() && targetName != null && !targetName.isBlank()) {
                 // Check if rename is needed
                 int index = inputId - 1;
@@ -305,7 +310,23 @@ public final class BraiAnAnalysisRunner {
 
         if (changed) {
             try {
-                imageData.getServer().updateChannelNames(currentNames);
+                var server = imageData.getServer();
+                var oldMetadata = server.getMetadata();
+                var oldChannels = oldMetadata.getChannels();
+
+                // Build new channel list with updated names
+                List<qupath.lib.images.servers.ImageChannel> newChannels = new ArrayList<>();
+                for (int i = 0; i < oldChannels.size(); i++) {
+                    var oldChannel = oldChannels.get(i);
+                    String newName = currentNames.get(i);
+                    newChannels.add(qupath.lib.images.servers.ImageChannel.getInstance(newName, oldChannel.getColor()));
+                }
+
+                // Create new metadata with updated channels
+                var newMetadata = new qupath.lib.images.servers.ImageServerMetadata.Builder(oldMetadata)
+                        .channels(newChannels)
+                        .build();
+                imageData.updateServerMetadata(newMetadata);
                 logger.info("Updated channel names to: {}", currentNames);
             } catch (Exception e) {
                 logger.error("Failed to update channel names: {}", e.getMessage());

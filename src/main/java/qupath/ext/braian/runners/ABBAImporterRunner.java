@@ -41,18 +41,18 @@ public final class ABBAImporterRunner {
         if (imageData == null) {
             throw new IllegalStateException("No image is currently open.");
         }
-        
+
         // Load config from project or default
         ProjectsConfig config = null;
         if (qupath.getProject() != null) {
             try {
                 config = ProjectsConfig.read("BraiAn.yml");
             } catch (Exception e) {
-                 logger.warn("Could not load BraiAn.yml, using default atlas.");
+                logger.warn("Could not load BraiAn.yml, using default atlas.");
             }
         }
         String atlasName = (config != null) ? config.getAtlasName() : "allen_mouse_10um_java";
-        
+
         importAtlas(imageData, atlasName);
         Project<BufferedImage> project = qupath.getProject();
         if (project != null) {
@@ -79,6 +79,15 @@ public final class ABBAImporterRunner {
             throw new IllegalStateException("No QuPath projects found in " + rootPath);
         }
 
+        // Load config from batch root directory
+        ProjectsConfig config = null;
+        try {
+            config = ProjectsConfig.read(rootPath.resolve("BraiAn.yml"));
+        } catch (Exception e) {
+            logger.warn("Could not load BraiAn.yml from batch root, using default atlas.");
+        }
+        final String atlasName = (config != null) ? config.getAtlasName() : "allen_mouse_10um_java";
+
         for (Path projectFile : projectFiles) {
             Project<BufferedImage> project;
             try {
@@ -99,7 +108,7 @@ public final class ABBAImporterRunner {
                 }
                 try {
                     QPEx.setBatchProjectAndImage(project, imageData);
-                    importAtlas(imageData, config.getAtlasName());
+                    importAtlas(imageData, atlasName);
                     entry.saveImageData(imageData);
                 } catch (Exception e) {
                     logger.error("Failed to import atlas for {}: {}", entry.getImageName(), e.getMessage());
@@ -122,9 +131,10 @@ public final class ABBAImporterRunner {
         imageData.setImageType(ImageData.ImageType.FLUORESCENCE);
         imageData.getHierarchy().clearAll();
         if (atlasName == null || atlasName.isBlank()) {
-           atlasName = "allen_mouse_10um_java";
+            atlasName = "allen_mouse_10um_java";
         }
-        AbbaReflectionBridge.loadWarpedAtlasAnnotations(imageData, atlasName, NAMING_PROPERTY, SPLIT_LEFT_RIGHT, OVERWRITE);
+        AbbaReflectionBridge.loadWarpedAtlasAnnotations(imageData, atlasName, NAMING_PROPERTY, SPLIT_LEFT_RIGHT,
+                OVERWRITE);
     }
 
     private static void closeServer(ImageData<BufferedImage> imageData) {
