@@ -73,7 +73,7 @@ public class ProjectsConfig {
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         options.setPrettyFlow(true);
         options.setIndent(2);
-        options.setIndicatorIndent(2);
+        options.setIndicatorIndent(0);
         options.setDefaultScalarStyle(DumperOptions.ScalarStyle.PLAIN);
 
         Representer representer = new Representer(options);
