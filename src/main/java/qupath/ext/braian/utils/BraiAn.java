@@ -18,10 +18,16 @@ import static qupath.lib.scripting.QP.getProject;
 
 public class BraiAn {
     public static Optional<Path> resolvePathIfPresent(String fileName) {
-        Path projectPath = Projects.getBaseDirectory(getProject()).toPath();
+        var project = getProject();
+        if (project == null) {
+            return Optional.empty();
+        }
+        Path projectPath = Projects.getBaseDirectory(project).toPath();
         Path projectParentDirectoryPath = projectPath.getParent();
-        Path[] resolutionOrder = {projectPath, projectParentDirectoryPath};
-        for (Path path: resolutionOrder) {
+        Path[] resolutionOrder = { projectPath, projectParentDirectoryPath };
+        for (Path path : resolutionOrder) {
+            if (path == null)
+                continue;
             Path filePath = path.resolve(fileName);
             if (Files.exists(filePath))
                 return Optional.of(filePath);
@@ -30,16 +36,20 @@ public class BraiAn {
     }
 
     /**
-     * It searches for a file accordingly to BraiAn specifics: it first searches it in the project's path;
-     * if it is not present, it searches it in the parent directory, were supposedly other QuPath projects of the
+     * It searches for a file accordingly to BraiAn specifics: it first searches it
+     * in the project's path;
+     * if it is not present, it searches it in the parent directory, were supposedly
+     * other QuPath projects of the
      * same experiment reside.
+     * 
      * @param fileName the name of the file to search accordingly to BraiAn
      * @return the complete path to <code>fileName</code>.
-     * @throws FileNotFoundException if no file named <code>fileName</code> was found.
+     * @throws FileNotFoundException if no file named <code>fileName</code> was
+     *                               found.
      */
     public static Path resolvePath(String fileName) throws FileNotFoundException {
         return resolvePathIfPresent(fileName)
-                .orElseThrow(() -> new FileNotFoundException("Can't find the specified file: '"+fileName+"'"));
+                .orElseThrow(() -> new FileNotFoundException("Can't find the specified file: '" + fileName + "'"));
     }
 
     public static void populatePathClassGUI(PathClass... toAdd) {
@@ -50,9 +60,7 @@ public class BraiAn {
         visibleClasses.addAll(missingClasses);
         var qupathGUI = QuPathGUI.getInstance();
         if (qupathGUI != null)
-            FXUtils.runOnApplicationThread(() ->
-                qupathGUI.getAvailablePathClasses().setAll(visibleClasses)
-            );
+            FXUtils.runOnApplicationThread(() -> qupathGUI.getAvailablePathClasses().setAll(visibleClasses));
     }
 
     public static <T> String join(Collection<T> c, String delimiter) {
@@ -60,11 +68,11 @@ public class BraiAn {
             return "";
         StringBuilder classesStr = new StringBuilder();
         List<T> l = c instanceof List ? (List<T>) c : new ArrayList<>(c);
-        for (int i = 0; i < l.size()-1; i++) {
+        for (int i = 0; i < l.size() - 1; i++) {
             T o = l.get(i);
             classesStr.append(o).append(delimiter);
         }
-        classesStr.append(l.get(l.size()-1));
+        classesStr.append(l.get(l.size() - 1));
         return classesStr.toString();
     }
 }

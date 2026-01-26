@@ -13,6 +13,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ListView;
@@ -111,10 +112,16 @@ public class BraiAnDetectDialog {
         }
     }
 
-    public BraiAnDetectDialog(QuPathGUI qupath) {
+    public enum InitialTab {
+        IMPORT,
+        DETECTION
+    }
+
+    public BraiAnDetectDialog(QuPathGUI qupath, InitialTab initialTab) {
         this.qupath = qupath;
         this.stage = new Stage();
         this.stage.setTitle("BraiAnDetect Pipeline Manager");
+        this.stage.initOwner(qupath.getStage());
         this.stage.setWidth(980);
         this.stage.setHeight(820);
         this.batchReady.bind(batchRootField.textProperty().isNotEmpty());
@@ -124,8 +131,15 @@ public class BraiAnDetectDialog {
                 onClose.run();
             }
         });
+
         initializeConfig();
-        this.stage.setScene(new Scene(buildRoot()));
+
+        // Update context if the project changes while the dialog is open
+        qupath.projectProperty().addListener((obs, oldValue, newValue) -> {
+            Platform.runLater(this::updateConfigForContext);
+        });
+        // We do not rebuild root on project change anymore to avoid resetting tab state
+        this.stage.setScene(new Scene(buildRoot(initialTab)));
     }
 
     public void setOnClose(Runnable onClose) {
@@ -152,13 +166,21 @@ public class BraiAnDetectDialog {
         }
     }
 
-    private BorderPane buildRoot() {
-        TabPane tabs = new TabPane();
-        tabs.getTabs().add(buildImportTab());
-        tabs.getTabs().add(buildExperimentTab());
-        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+    private Parent buildRoot(InitialTab initialTab) {
+        TabPane tabPane = new TabPane();
+        Tab importTab = buildImportTab();
+        Tab experimentTab = buildExperimentTab();
 
-        BorderPane root = new BorderPane(tabs);
+        tabPane.getTabs().addAll(importTab, experimentTab);
+        tabPane.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+
+        if (initialTab == InitialTab.DETECTION) {
+            tabPane.getSelectionModel().select(experimentTab);
+        } else {
+            tabPane.getSelectionModel().select(importTab);
+        }
+
+        BorderPane root = new BorderPane(tabPane);
         root.setPadding(new Insets(8));
         return root;
     }
@@ -354,14 +376,17 @@ public class BraiAnDetectDialog {
             selectedByPath.put(project.getProjectFile(), project.isSelected());
         }
 
-        List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
-        List<DiscoveredProject> refreshed = new ArrayList<>();
-        for (Path projectFile : projectFiles) {
-            String name = projectFile.getParent().getFileName().toString();
-            boolean selected = selectedByPath.getOrDefault(projectFile, true);
-            refreshed.add(new DiscoveredProject(name, projectFile, selected));
-        }
-        discoveredProjects.setAll(refreshed);
+        // Run discovery in background to avoid freezing UI
+        runAsync("Discover Projects", () -> {
+            List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
+            List<DiscoveredProject> refreshed = new ArrayList<>();
+            for (Path projectFile : projectFiles) {
+                String name = projectFile.getParent().getFileName().toString();
+                boolean selected = selectedByPath.getOrDefault(projectFile, true);
+                refreshed.add(new DiscoveredProject(name, projectFile, selected));
+            }
+            Platform.runLater(() -> discoveredProjects.setAll(refreshed));
+        });
     }
 
     private List<Path> getSelectedProjectFiles() {
@@ -398,11 +423,14 @@ public class BraiAnDetectDialog {
             logger.warn("Config path is not available; skipping save.");
             return;
         }
+        if (saveExecutor.isShutdown()) {
+            return;
+        }
         saveExecutor.execute(() -> {
             try {
                 writeConfigNow(yaml);
             } catch (IOException e) {
-                logger.error("Failed to write configuration", e);
+                logger.error("Failed to save config", e);
             }
         });
     }
@@ -502,7 +530,7 @@ public class BraiAnDetectDialog {
     }
 
     private void runAsync(String title, Runnable task) {
-        if (running.get()) {
+        if (running.get() || runExecutor.isShutdown()) {
             return;
         }
         running.set(true);

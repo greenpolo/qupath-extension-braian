@@ -77,6 +77,7 @@ public class ExperimentPane extends VBox {
         });
         this.onConfigChanged = Objects.requireNonNullElse(onConfigChanged, () -> {
         });
+        this.config = config;
         this.configRootSupplier = configRootSupplier;
         this.projectDirSupplier = projectDirSupplier;
 
@@ -90,7 +91,8 @@ public class ExperimentPane extends VBox {
                 new Separator(),
                 buildCommandBar());
 
-        setConfig(config);
+        ensureChannelListMutable();
+        refreshFromConfig();
     }
 
     public void setConfig(ProjectsConfig config) {
