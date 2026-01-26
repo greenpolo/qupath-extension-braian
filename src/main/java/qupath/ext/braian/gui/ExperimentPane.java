@@ -24,6 +24,7 @@ import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.DetectionsCheckConfig;
 import qupath.ext.braian.config.ProjectsConfig;
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
+import qupath.lib.images.ImageData;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -44,6 +45,7 @@ public class ExperimentPane extends VBox {
     private final Runnable onConfigChanged;
     private final Supplier<Path> configRootSupplier;
     private final Supplier<Path> projectDirSupplier;
+    private final Supplier<ImageData<?>> imageDataSupplier;
     private final VBox channelStack = new VBox(12);
     private final TextField classForDetectionsField = new TextField();
     private final TextField atlasNameField = new TextField();
@@ -64,7 +66,8 @@ public class ExperimentPane extends VBox {
             Runnable onRun,
             Runnable onConfigChanged,
             Supplier<Path> configRootSupplier,
-            Supplier<Path> projectDirSupplier) {
+            Supplier<Path> projectDirSupplier,
+            Supplier<ImageData<?>> imageDataSupplier) {
         this.channelNames = channelNames;
         this.availableImageChannels = availableImageChannels;
         this.owner = owner;
@@ -80,6 +83,7 @@ public class ExperimentPane extends VBox {
         this.config = config;
         this.configRootSupplier = configRootSupplier;
         this.projectDirSupplier = projectDirSupplier;
+        this.imageDataSupplier = imageDataSupplier;
 
         setSpacing(16);
         setPadding(new Insets(16));
@@ -282,17 +286,16 @@ public class ExperimentPane extends VBox {
     }
 
     public void autoDetectAtlas() {
-        if (qupath.lib.gui.QuPathGUI.getInstance() != null) {
-            var viewer = qupath.lib.gui.QuPathGUI.getInstance().getViewer();
-            if (viewer != null && viewer.getImageData() != null) {
-                var root = viewer.getImageData().getHierarchy().getRootObject();
-                if (root != null && root.getPathClass() != null) {
-                    String detected = root.getPathClass().getName();
-                    if (config.getAtlasName() == null || config.getAtlasName().equals("allen_mouse_10um_java")) {
-                        config.setAtlasName(detected);
-                        notifyConfigChanged();
-                    }
-                }
+        ImageData<?> imageData = imageDataSupplier.get();
+        if (imageData == null) {
+            return;
+        }
+        var root = imageData.getHierarchy().getRootObject();
+        if (root != null && root.getPathClass() != null) {
+            String detected = root.getPathClass().getName();
+            if (config.getAtlasName() == null || config.getAtlasName().equals("allen_mouse_10um_java")) {
+                config.setAtlasName(detected);
+                notifyConfigChanged();
             }
         }
     }

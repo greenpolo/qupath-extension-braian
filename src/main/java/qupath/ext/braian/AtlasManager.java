@@ -8,13 +8,13 @@ import qupath.ext.braian.utils.BraiAn;
 import qupath.lib.common.GeneralTools;
 import qupath.lib.gui.measure.ObservableMeasurementTableData;
 import qupath.lib.images.servers.PixelCalibration;
+import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjectTools;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import qupath.lib.projects.ProjectImageEntry;
-import qupath.lib.scripting.QP;
 
 import ij.measure.ResultsTable;
 import java.awt.image.BufferedImage;
@@ -22,6 +22,8 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -103,9 +105,10 @@ public class AtlasManager {
         return flattenObjectStream(parent).toList();
     }
 
-    private static List<String> getDetectionsMeasurements(List<AbstractDetections> detections) {
+    private static List<String> getDetectionsMeasurements(List<AbstractDetections> detections,
+                                                          ImageData<?> imageData) {
         // TODO: should avoid resorting to QP to get the server metadata
-        PixelCalibration cal = QP.getCurrentImageData().getServerMetadata().getPixelCalibration();
+        PixelCalibration cal = imageData.getServerMetadata().getPixelCalibration();
         if (!um.equals(cal.getPixelWidthUnit()) || !um.equals(cal.getPixelHeightUnit()))
             throw new RuntimeException(
                     "FAILED to export results. Expected image pixel units to be in 'µm', instead got them in '" +
@@ -231,7 +234,10 @@ public class AtlasManager {
      */
     // Olivier Burri <https://github.com/lacan> wrote mostly of this function and
     // published under Apache-2.0 license for qupath-extension-biop
-    public boolean saveResults(List<AbstractDetections> detections, File file) {
+    public boolean saveResults(List<AbstractDetections> detections,
+                               File file,
+                               ImageData<BufferedImage> imageData,
+                               ProjectImageEntry<BufferedImage> entry) {
         if (this.atlasObject.getChildObjects().isEmpty())
             throw new DisruptedAtlasHierarchy(this.atlasObject);
         if (file.exists())
@@ -240,7 +246,15 @@ public class AtlasManager {
                         file.getName());
                 return false;
             }
-        QP.mkdirs(file.getAbsoluteFile().getParent());
+        Path parent = file.toPath().getParent();
+        if (parent != null) {
+            try {
+                Files.createDirectories(parent);
+            } catch (IOException e) {
+                getLogger().error("Could not create directory {}: {}", parent, e.getMessage());
+                return false;
+            }
+        }
 
         // We use a ResultsTable to store the data
         ResultsTable results = new ResultsTable();
@@ -250,12 +264,12 @@ public class AtlasManager {
         if (brainRegions.stream().anyMatch(p -> p.getPathClass() == EXCLUDE_CLASSIFICATION))
             throw new ExclusionMistakeException();
         // This line creates all the measurements
-        ob.setImageData(QP.getCurrentImageData(), brainRegions);
+        if (imageData == null) {
+            throw new IllegalArgumentException("ImageData is required to export atlas results");
+        }
+        ob.setImageData(imageData, brainRegions);
 
-        ProjectImageEntry<BufferedImage> entry = QP.getProjectEntry();
-
-        assert entry != null;
-        String rawImageName = entry.getImageName();
+        String rawImageName = entry != null ? entry.getImageName() : imageData.getServerMetadata().getName();
         double numericValue;
 
         // Add value for each selected object
@@ -264,7 +278,7 @@ public class AtlasManager {
             results.addValue("Image Name", rawImageName);
 
             // Check if image has associated metadata and add it as columns
-            if (!entry.getMetadata().isEmpty()) {
+            if (entry != null && !entry.getMetadata().isEmpty()) {
                 Map<String, String> metadata = entry.getMetadata();
                 for (String key : metadata.keySet()) {
                     results.addValue("Metadata_" + key, metadata.get(key));
@@ -274,7 +288,7 @@ public class AtlasManager {
             // Then we can add the results the user requested
             // Because the Mu is sometimes poorly formatted, we remove them in favor of a
             // 'u'
-            for (String col : AtlasManager.getDetectionsMeasurements(detections)) {
+            for (String col : AtlasManager.getDetectionsMeasurements(detections, imageData)) {
                 if (ob.isNumericMeasurement(col)) {
                     numericValue = ob.getNumericValue(brainRegion, col);
                     if (col.startsWith("Num ") && Double.isNaN(numericValue))
@@ -378,7 +392,15 @@ public class AtlasManager {
                         file.getName());
                 return false;
             }
-        QP.mkdirs(file.getAbsoluteFile().getParent());
+        Path parent = file.toPath().getParent();
+        if (parent != null) {
+            try {
+                Files.createDirectories(parent);
+            } catch (IOException e) {
+                getLogger().error("Could not create directory {}: {}", parent, e.getMessage());
+                return false;
+            }
+        }
 
         Set<PathObject> regionsToExcludeSet = this.getExcludedBrainRegions(); // NOTE: may return things that aren't
                                                                               // brain regions
@@ -389,8 +411,10 @@ public class AtlasManager {
                 .toList();
         getLogger().info("Excluded regions: [{}]", BraiAn.join(regionsToExclude, ", "));
 
-        QP.resetSelection();
-        QP.selectObjects(regionsToExclude);
+        this.hierarchy.getSelectionModel().clearSelection();
+        if (!regionsToExclude.isEmpty()) {
+            this.hierarchy.getSelectionModel().setSelectedObjects(regionsToExclude, null);
+        }
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
             for (PathObject region : regionsToExclude) {

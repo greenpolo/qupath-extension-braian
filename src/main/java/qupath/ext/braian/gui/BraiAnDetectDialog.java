@@ -41,8 +41,8 @@ import qupath.ext.braian.runners.ABBAImporterRunner;
 import qupath.ext.braian.runners.BraiAnAnalysisRunner;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.ext.braian.utils.ProjectDiscoveryService;
+import qupath.fx.dialogs.Dialogs;
 import qupath.lib.gui.QuPathGUI;
-import qupath.lib.gui.dialogs.Dialogs;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageChannel;
 import qupath.lib.projects.Project;
@@ -274,7 +274,8 @@ public class BraiAnDetectDialog {
                 this::handleRun,
                 this::scheduleConfigSave,
                 this::resolveConfigRoot,
-                this::resolveProjectDirectory);
+                this::resolveProjectDirectory,
+                this::resolveImageData);
         ScrollPane scrollPane = new ScrollPane(experimentPane);
         scrollPane.setFitToWidth(true);
         scrollPane.setFitToHeight(true);
@@ -486,7 +487,7 @@ public class BraiAnDetectDialog {
             }
             return Path.of(root).resolve(CONFIG_FILENAME);
         }
-        Optional<Path> configPathOpt = BraiAn.resolvePathIfPresent(CONFIG_FILENAME);
+        Optional<Path> configPathOpt = BraiAn.resolvePathIfPresent(qupath.getProject(), CONFIG_FILENAME);
         if (configPathOpt.isPresent()) {
             return configPathOpt.get();
         }
@@ -567,5 +568,9 @@ public class BraiAnDetectDialog {
             return null;
         }
         return Projects.getBaseDirectory(project).toPath();
+    }
+
+    private ImageData<BufferedImage> resolveImageData() {
+        return qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
     }
 }

@@ -29,7 +29,7 @@ import qupath.ext.braian.config.AutoThresholdParmameters;
 import qupath.ext.braian.config.ChannelClassifierConfig;
 import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
-import qupath.lib.gui.dialogs.Dialogs;
+import qupath.fx.dialogs.Dialogs;
 
 import java.io.File;
 import java.io.IOException;

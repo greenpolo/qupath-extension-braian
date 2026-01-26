@@ -20,7 +20,6 @@ import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.commands.Commands;
-import qupath.lib.gui.scripting.QPEx;
 import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.projects.Project;
@@ -55,8 +54,7 @@ public final class BraiAnAnalysisRunner {
         if (imageData == null) {
             throw new IllegalStateException("No image open.");
         }
-        QPEx.setBatchProjectAndImage(project, imageData);
-        processImage(imageData, project, null, config, false);
+        processImage(qupath, imageData, project, null, config, false);
     }
 
     public static void runProject(QuPathGUI qupath) {
@@ -99,7 +97,9 @@ public final class BraiAnAnalysisRunner {
         }
     }
 
-    private static void runProjectImages(QuPathGUI qupath, Project<BufferedImage> project, ProjectsConfig config,
+    private static void runProjectImages(QuPathGUI qupath,
+            Project<BufferedImage> project,
+            ProjectsConfig config,
             boolean export) {
         for (ProjectImageEntry<BufferedImage> entry : project.getImageList()) {
             ImageData<BufferedImage> imageData;
@@ -110,8 +110,7 @@ public final class BraiAnAnalysisRunner {
                 continue;
             }
             try {
-                QPEx.setBatchProjectAndImage(project, imageData);
-                processImage(imageData, project, entry, config, export);
+                processImage(qupath, imageData, project, entry, config, export);
                 entry.saveImageData(imageData);
             } catch (Exception e) {
                 logger.error("Failed processing {}: {}", entry.getImageName(), e.getMessage());
@@ -127,7 +126,8 @@ public final class BraiAnAnalysisRunner {
         System.gc();
     }
 
-    private static void processImage(ImageData<BufferedImage> imageData,
+    private static void processImage(QuPathGUI qupath,
+            ImageData<BufferedImage> imageData,
             Project<BufferedImage> project,
             ProjectImageEntry<BufferedImage> entry,
             ProjectsConfig config,
@@ -148,7 +148,7 @@ public final class BraiAnAnalysisRunner {
             try {
                 ImageChannelTools channel = new ImageChannelTools(name, imageData);
                 ChannelDetections detections = new ChannelDetections(channel, annotations,
-                        detectionsConfig.getParameters(), hierarchy);
+                        detectionsConfig.getParameters(), hierarchy, imageData, project, qupath);
                 allDetections.add(detections);
             } catch (IllegalArgumentException e) {
                 logger.warn("Skipping {}: {}", name, e.getMessage());
@@ -174,7 +174,7 @@ public final class BraiAnAnalysisRunner {
             List<PartialClassifier<BufferedImage>> partialClassifiers = new ArrayList<>();
             for (ChannelClassifierConfig classifierConfig : detectionsConfig.getClassifiers()) {
                 try {
-                    partialClassifiers.add(classifierConfig.toPartialClassifier(hierarchy));
+                    partialClassifiers.add(classifierConfig.toPartialClassifier(hierarchy, project));
                 } catch (IOException e) {
                     logger.warn("Failed to load classifier {}: {}", classifierConfig.getName(), e.getMessage());
                 }
@@ -199,7 +199,7 @@ public final class BraiAnAnalysisRunner {
             }
             try {
                 List<AbstractDetections> otherDetections = new ArrayList<>(others);
-                overlaps.add(new OverlappingDetections(control, otherDetections, true, hierarchy));
+                overlaps.add(new OverlappingDetections(control, otherDetections, true, hierarchy, project, qupath));
             } catch (NoCellContainersFoundException e) {
                 logger.warn("Unable to compute overlaps: {}", e.getMessage());
             }
@@ -219,19 +219,19 @@ public final class BraiAnAnalysisRunner {
             return;
         }
 
-        try {
-            AtlasManager atlas = new AtlasManager(atlasName, hierarchy);
-            atlas.fixExclusions();
-            String imageName = sanitizeFileName(entry.getImageName());
-            Path projectDir = Projects.getBaseDirectory(project).toPath();
-            Path resultsPath = projectDir.resolve("results").resolve(imageName + "_regions.tsv");
-            Path exclusionsPath = projectDir.resolve("regions_to_exclude")
-                    .resolve(imageName + "_regions_to_exclude.txt");
-            atlas.saveResults(concat(allDetections, overlaps), resultsPath.toFile());
-            atlas.saveExcludedRegions(exclusionsPath.toFile());
-        } catch (RuntimeException e) {
-            logger.error("Failed to export results for {}: {}", entry.getImageName(), e.getMessage());
-        }
+            try {
+                AtlasManager atlas = new AtlasManager(atlasName, hierarchy);
+                atlas.fixExclusions();
+                String imageName = sanitizeFileName(entry.getImageName());
+                Path projectDir = Projects.getBaseDirectory(project).toPath();
+                Path resultsPath = projectDir.resolve("results").resolve(imageName + "_regions.tsv");
+                Path exclusionsPath = projectDir.resolve("regions_to_exclude")
+                        .resolve(imageName + "_regions_to_exclude.txt");
+                atlas.saveResults(concat(allDetections, overlaps), resultsPath.toFile(), imageData, entry);
+                atlas.saveExcludedRegions(exclusionsPath.toFile());
+            } catch (RuntimeException e) {
+                logger.error("Failed to export results for {}: {}", entry.getImageName(), e.getMessage());
+            }
     }
 
     private static ProjectsConfig loadConfigForProject() {
