@@ -15,6 +15,7 @@ import qupath.ext.braian.OverlappingDetections;
 import qupath.ext.braian.config.ChannelClassifierConfig;
 import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.ProjectsConfig;
+import qupath.ext.braian.PartialClassifier;
 import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.fx.utils.FXUtils;
 import qupath.lib.gui.QuPathGUI;
@@ -28,7 +29,7 @@ import qupath.lib.projects.ProjectImageEntry;
 import qupath.lib.projects.Projects;
 
 import java.awt.image.BufferedImage;
-import java.io.File;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,7 +41,6 @@ import java.util.Optional;
 public final class BraiAnAnalysisRunner {
     private static final Logger logger = LoggerFactory.getLogger(BraiAnAnalysisRunner.class);
     private static final String CONFIG_FILENAME = "BraiAn.yml";
-    private static final String ATLAS_NAME = "allen_mouse_10um_java";
 
     private BraiAnAnalysisRunner() {
     }
@@ -171,7 +171,7 @@ public final class BraiAnAnalysisRunner {
             if (detectionsConfig == null || detectionsConfig.getClassifiers() == null) {
                 continue;
             }
-            List partialClassifiers = new ArrayList();
+            List<PartialClassifier<BufferedImage>> partialClassifiers = new ArrayList<>();
             for (ChannelClassifierConfig classifierConfig : detectionsConfig.getClassifiers()) {
                 try {
                     partialClassifiers.add(classifierConfig.toPartialClassifier(hierarchy));

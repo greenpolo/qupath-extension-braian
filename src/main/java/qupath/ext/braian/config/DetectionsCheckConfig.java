@@ -4,8 +4,6 @@
 
 package qupath.ext.braian.config;
 
-import java.util.Optional;
-
 public class DetectionsCheckConfig {
     private boolean apply = false;
     private String controlChannel = null;
