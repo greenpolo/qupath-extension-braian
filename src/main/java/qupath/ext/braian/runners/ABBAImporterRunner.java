@@ -11,7 +11,6 @@ import qupath.fx.utils.FXUtils;
 import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.commands.Commands;
-import qupath.lib.gui.scripting.QPEx;
 import qupath.lib.images.ImageData;
 import qupath.lib.projects.Project;
 import qupath.lib.projects.ProjectIO;
@@ -75,7 +74,6 @@ public final class ABBAImporterRunner {
                 continue;
             }
             try {
-                QPEx.setBatchProjectAndImage(project, imageData);
                 importAtlas(imageData);
                 entry.saveImageData(imageData);
             } catch (Exception e) {
@@ -137,7 +135,6 @@ public final class ABBAImporterRunner {
                     continue;
                 }
                 try {
-                    QPEx.setBatchProjectAndImage(project, imageData);
                     importAtlas(imageData);
                     entry.saveImageData(imageData);
                 } catch (Exception e) {

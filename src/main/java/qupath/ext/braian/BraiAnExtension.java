@@ -8,13 +8,14 @@ import org.controlsfx.control.action.Action;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.braian.gui.BraiAnDetectDialog;
+import qupath.lib.common.Version;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.actions.ActionTools;
 import qupath.lib.gui.extensions.QuPathExtension;
 import qupath.lib.gui.tools.MenuTools;
+import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
-import qupath.lib.scripting.QP;
 
 import java.io.*;
 import java.net.URLDecoder;
@@ -70,15 +71,18 @@ public class BraiAnExtension implements QuPathExtension {
 
         var showExclusions = ActionTools.createAction(
                 () -> {
-                    PathObjectHierarchy hierarchy = QP.getCurrentHierarchy();
-                    if (hierarchy == null) {
+                    ImageData<?> imageData = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
+                    if (imageData == null) {
                         logger.error("No image is currently open!");
                         return;
                     }
+                    PathObjectHierarchy hierarchy = imageData.getHierarchy();
                     AtlasManager atlas = new AtlasManager(hierarchy);
                     Set<PathObject> regionsToExcludeSet = atlas.getExcludedBrainRegions();
-                    QP.resetSelection();
-                    QP.selectObjects(regionsToExcludeSet);
+                    hierarchy.getSelectionModel().clearSelection();
+                    if (!regionsToExcludeSet.isEmpty()) {
+                        hierarchy.getSelectionModel().setSelectedObjects(regionsToExcludeSet, null);
+                    }
                 },
                 "Show regions currently excluded");
         MenuTools.addMenuItems(
@@ -159,5 +163,10 @@ public class BraiAnExtension implements QuPathExtension {
     @Override
     public String getDescription() {
         return "A collection of tools for whole-brain data quantification and extraction";
+    }
+
+    @Override
+    public Version getQuPathVersion() {
+        return Version.parse("0.6.0");
     }
 }
