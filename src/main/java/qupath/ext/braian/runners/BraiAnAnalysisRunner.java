@@ -49,7 +49,7 @@ public final class BraiAnAnalysisRunner {
         if (project == null) {
             throw new IllegalStateException("No project open.");
         }
-        ProjectsConfig config = loadConfigForProject();
+        ProjectsConfig config = loadConfigForProject(project);
         ImageData<BufferedImage> imageData = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
         if (imageData == null) {
             throw new IllegalStateException("No image open.");
@@ -62,7 +62,7 @@ public final class BraiAnAnalysisRunner {
         if (project == null) {
             throw new IllegalStateException("No project open.");
         }
-        ProjectsConfig config = loadConfigForProject();
+        ProjectsConfig config = loadConfigForProject(project);
         runProjectImages(qupath, project, config, true);
     }
 
@@ -234,9 +234,9 @@ public final class BraiAnAnalysisRunner {
             }
     }
 
-    private static ProjectsConfig loadConfigForProject() {
+    private static ProjectsConfig loadConfigForProject(Project<BufferedImage> project) {
         try {
-            return ProjectsConfig.read(CONFIG_FILENAME);
+            return ProjectsConfig.read(project, CONFIG_FILENAME);
         } catch (IOException e) {
             throw new IllegalStateException("Unable to load BraiAn.yml: " + e.getMessage(), e);
         }

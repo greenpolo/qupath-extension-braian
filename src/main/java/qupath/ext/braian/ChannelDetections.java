@@ -5,7 +5,7 @@
 package qupath.ext.braian;
 
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
-import qupath.lib.common.GsonTools;
+import qupath.lib.io.GsonTools;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.images.ImageData;
 import qupath.lib.images.servers.ImageServer;
