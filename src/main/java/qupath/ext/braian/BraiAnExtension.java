@@ -38,6 +38,7 @@ public class BraiAnExtension implements QuPathExtension {
 
     /**
      * integrate the extension in QuPath GUI
+     * 
      * @param qupath the istance of QuPath to modify
      */
     @Override
@@ -47,15 +48,26 @@ public class BraiAnExtension implements QuPathExtension {
     }
 
     private void addCommands(QuPathGUI qupath) {
-        var openGui = ActionTools.createAction(
+        var importAction = ActionTools.createAction(
                 () -> {
                     try {
-                        new BraiAnDetectDialog(qupath).show();
+                        new BraiAnDetectDialog(qupath, BraiAnDetectDialog.InitialTab.IMPORT).show();
                     } catch (IllegalStateException e) {
                         logger.warn("BraiAnDetect GUI not opened: {}", e.getMessage());
                     }
                 },
-                "Open BraiAnDetect Pipeline Manager");
+                "Atlas Import (ABBA)");
+
+        var detectionAction = ActionTools.createAction(
+                () -> {
+                    try {
+                        new BraiAnDetectDialog(qupath, BraiAnDetectDialog.InitialTab.DETECTION).show();
+                    } catch (IllegalStateException e) {
+                        logger.warn("BraiAnDetect GUI not opened: {}", e.getMessage());
+                    }
+                },
+                "Analysis & Detection");
+
         var showExclusions = ActionTools.createAction(
                 () -> {
                     PathObjectHierarchy hierarchy = QP.getCurrentHierarchy();
@@ -71,9 +83,9 @@ public class BraiAnExtension implements QuPathExtension {
                 "Show regions currently excluded");
         MenuTools.addMenuItems(
                 qupath.getMenu(BraiAnExtension.menuPosition, true),
-                openGui,
-                showExclusions
-        );
+                importAction,
+                detectionAction,
+                showExclusions);
     }
 
     private void addHelpScripts(QuPathGUI qupath) {
@@ -82,17 +94,17 @@ public class BraiAnExtension implements QuPathExtension {
             logger.warn("Could not find the '{}' JAR file!", getClass().getSimpleName());
             return;
         }
-        String[] scripts = listJarDirectory(extensionJar, (dir, file) -> dir.toString().equals("scripts") && file.endsWith(".groovy"));
+        String[] scripts = listJarDirectory(extensionJar,
+                (dir, file) -> dir.toString().equals("scripts") && file.endsWith(".groovy"));
 
-        for(String scriptPath: scripts)
+        for (String scriptPath : scripts)
             try (InputStream stream = getClass().getClassLoader().getResourceAsStream(scriptPath)) {
                 assert stream != null;
                 String scriptName = new File(scriptPath).getName();
                 String script = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
                 MenuTools.addMenuItems(
-                        qupath.getMenu(BraiAnExtension.menuPosition+">Scripts", true),
-                        new Action(scriptName, e -> openScript(qupath, scriptName, script))
-                );
+                        qupath.getMenu(BraiAnExtension.menuPosition + ">Scripts", true),
+                        new Action(scriptName, e -> openScript(qupath, scriptName, script)));
             } catch (Exception e) {
                 logger.error(e.getLocalizedMessage(), e);
             }
@@ -109,7 +121,7 @@ public class BraiAnExtension implements QuPathExtension {
         try (JarFile jar = new JarFile(URLDecoder.decode(jarPath.toString(), StandardCharsets.UTF_8))) {
             internalFiles = jar.entries(); // gives ALL internalFiles in jar
             List<String> selectedResources = new ArrayList<>();
-            while(internalFiles.hasMoreElements()) {
+            while (internalFiles.hasMoreElements()) {
                 String internalPath = internalFiles.nextElement().getName();
                 if (internalPath.endsWith("/"))
                     continue;
