@@ -133,8 +133,12 @@ public final class BraiAnAnalysisRunner {
             ProjectsConfig config,
             boolean export) {
         var hierarchy = imageData.getHierarchy();
-        boolean enableCellDetection = config.isEnableCellDetection();
-        boolean enablePixelClassification = config.isEnablePixelClassification();
+        List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections())
+                .orElse(List.of());
+        boolean enableCellDetection = channelConfigs.stream()
+                .anyMatch(ChannelDetectionsConfig::isEnableCellDetection);
+        boolean enablePixelClassification = channelConfigs.stream()
+                .anyMatch(ChannelDetectionsConfig::isEnablePixelClassification);
 
         List<ChannelDetections> allDetections = new ArrayList<>();
         List<OverlappingDetections> overlaps = new ArrayList<>();
@@ -142,10 +146,10 @@ public final class BraiAnAnalysisRunner {
         if (enableCellDetection) {
             applyChannelRenaming(imageData, config);
             Collection<PathAnnotationObject> annotations = config.getAnnotationsForDetections(hierarchy);
-
-            List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections())
-                    .orElse(List.of());
             for (ChannelDetectionsConfig detectionsConfig : channelConfigs) {
+                if (!detectionsConfig.isEnableCellDetection()) {
+                    continue;
+                }
                 String name = detectionsConfig.getName();
                 if (name == null || name.isBlank()) {
                     continue;

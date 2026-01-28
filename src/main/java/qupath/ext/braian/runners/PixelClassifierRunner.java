@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.braian.AbstractDetections;
 import qupath.ext.braian.AtlasManager;
+import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.PixelClassifierConfig;
 import qupath.ext.braian.config.ProjectsConfig;
 import qupath.ext.braian.utils.BraiAn;
@@ -50,8 +51,17 @@ public final class PixelClassifierRunner {
             throw new IllegalArgumentException("ImageData is required for pixel classification.");
         }
 
-        List<PixelClassifierConfig> classifierConfigs = Optional.ofNullable(config.getPixelClassifiers())
+        List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections())
                 .orElse(List.of());
+        List<PixelClassifierConfig> classifierConfigs = new ArrayList<>();
+        for (ChannelDetectionsConfig channelConfig : channelConfigs) {
+            if (!channelConfig.isEnablePixelClassification()) {
+                continue;
+            }
+            List<PixelClassifierConfig> pixelClassifiers = Optional.ofNullable(channelConfig.getPixelClassifiers())
+                    .orElse(List.of());
+            classifierConfigs.addAll(pixelClassifiers);
+        }
         if (classifierConfigs.isEmpty()) {
             logger.info("No pixel classifiers configured.");
             return;
@@ -70,17 +80,15 @@ public final class PixelClassifierRunner {
         }
 
         AtlasManager atlas = new AtlasManager(atlasName, hierarchy);
-        List<PathObject> regions = detections != null && !detections.isEmpty()
+        List<PathObject> baseRegions = detections != null && !detections.isEmpty()
                 ? atlas.flatten(new ArrayList<>(detections))
                 : atlas.flatten();
-        if (regions.isEmpty()) {
+        if (baseRegions.isEmpty()) {
             logger.warn("No atlas regions available for pixel classification.");
             return;
         }
 
         List<String> measurementIds = new ArrayList<>();
-        hierarchy.getSelectionModel().clearSelection();
-        hierarchy.getSelectionModel().setSelectedObjects(regions, null);
         for (PixelClassifierConfig classifierConfig : classifierConfigs) {
             String classifierName = trimToNull(classifierConfig.getClassifierName());
             String measurementId = trimToNull(classifierConfig.getMeasurementId());
@@ -109,6 +117,14 @@ public final class PixelClassifierRunner {
                 continue;
             }
 
+            List<PathObject> targetRegions = filterRegions(baseRegions, classifierConfig.getRegionFilter());
+            if (targetRegions.isEmpty()) {
+                logger.warn("No atlas regions matched filter for pixel classifier '{}'", classifierName);
+                continue;
+            }
+
+            hierarchy.getSelectionModel().clearSelection();
+            hierarchy.getSelectionModel().setSelectedObjects(targetRegions, null);
             boolean applied = PixelClassifierTools.addMeasurementsToSelectedObjects(imageData, classifier, measurementId);
             if (applied && !measurementIds.contains(measurementId)) {
                 measurementIds.add(measurementId);
@@ -121,7 +137,7 @@ public final class PixelClassifierRunner {
         }
 
         Path projectDir = Projects.getBaseDirectory(project).toPath();
-        exportResults(projectDir, entry, imageData, regions, measurementIds);
+        exportResults(projectDir, entry, imageData, baseRegions, measurementIds);
     }
 
     private static Path resolveClassifierPath(Project<?> project, String classifierName) throws FileNotFoundException {
@@ -186,6 +202,27 @@ public final class PixelClassifierRunner {
         } else {
             logger.warn("Failed to save pixel classifier results under '{}'", resultsPath);
         }
+    }
+
+    private static List<PathObject> filterRegions(List<PathObject> regions, List<String> filter) {
+        if (filter == null || filter.isEmpty()) {
+            return regions;
+        }
+        List<String> names = filter.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::trim)
+                .toList();
+        if (names.isEmpty()) {
+            return regions;
+        }
+        List<PathObject> filtered = new ArrayList<>();
+        for (PathObject region : regions) {
+            String regionName = region.getName();
+            if (regionName != null && names.contains(regionName)) {
+                filtered.add(region);
+            }
+        }
+        return filtered;
     }
 
     private static String trimToNull(String value) {
