@@ -132,106 +132,112 @@ public final class BraiAnAnalysisRunner {
             ProjectImageEntry<BufferedImage> entry,
             ProjectsConfig config,
             boolean export) {
-        applyChannelRenaming(imageData, config);
-
         var hierarchy = imageData.getHierarchy();
-        Collection<PathAnnotationObject> annotations = config.getAnnotationsForDetections(hierarchy);
+        boolean enableCellDetection = config.isEnableCellDetection();
+        boolean enablePixelClassification = config.isEnablePixelClassification();
 
         List<ChannelDetections> allDetections = new ArrayList<>();
-        List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections())
-                .orElse(List.of());
-        for (ChannelDetectionsConfig detectionsConfig : channelConfigs) {
-            String name = detectionsConfig.getName();
-            if (name == null || name.isBlank()) {
-                continue;
-            }
-            try {
-                ImageChannelTools channel = new ImageChannelTools(name, imageData);
-                ChannelDetections detections = new ChannelDetections(channel, annotations,
-                        detectionsConfig.getParameters(), hierarchy, imageData, project, qupath);
-                allDetections.add(detections);
-            } catch (IllegalArgumentException e) {
-                logger.warn("Skipping {}: {}", name, e.getMessage());
-            } catch (NoCellContainersFoundException e) {
-                logger.warn("No detections found for {}", name);
-            }
-        }
+        List<OverlappingDetections> overlaps = new ArrayList<>();
 
-        if (allDetections.isEmpty()) {
-            String label = entry != null ? entry.getImageName() : imageData.getServerMetadata().getName();
-            logger.info("{}: no detections computed", label);
-            return;
-        }
+        if (enableCellDetection) {
+            applyChannelRenaming(imageData, config);
+            Collection<PathAnnotationObject> annotations = config.getAnnotationsForDetections(hierarchy);
 
-        for (ChannelDetections detections : allDetections) {
-            ChannelDetectionsConfig detectionsConfig = channelConfigs.stream()
-                    .filter(conf -> detections.getId().equals(conf.getName()))
-                    .findFirst()
-                    .orElse(null);
-            if (detectionsConfig == null || detectionsConfig.getClassifiers() == null) {
-                continue;
-            }
-            List<PartialClassifier<BufferedImage>> partialClassifiers = new ArrayList<>();
-            for (ChannelClassifierConfig classifierConfig : detectionsConfig.getClassifiers()) {
+            List<ChannelDetectionsConfig> channelConfigs = Optional.ofNullable(config.getChannelDetections())
+                    .orElse(List.of());
+            for (ChannelDetectionsConfig detectionsConfig : channelConfigs) {
+                String name = detectionsConfig.getName();
+                if (name == null || name.isBlank()) {
+                    continue;
+                }
                 try {
-                    partialClassifiers.add(classifierConfig.toPartialClassifier(hierarchy, project));
-                } catch (IOException e) {
-                    logger.warn("Failed to load classifier {}: {}", classifierConfig.getName(), e.getMessage());
+                    ImageChannelTools channel = new ImageChannelTools(name, imageData);
+                    ChannelDetections detections = new ChannelDetections(channel, annotations,
+                            detectionsConfig.getParameters(), hierarchy, imageData, project, qupath);
+                    allDetections.add(detections);
+                } catch (IllegalArgumentException e) {
+                    logger.warn("Skipping {}: {}", name, e.getMessage());
+                } catch (NoCellContainersFoundException e) {
+                    logger.warn("No detections found for {}", name);
                 }
             }
-            detections.applyClassifiers(partialClassifiers, imageData);
+
+            if (allDetections.isEmpty()) {
+                String label = entry != null ? entry.getImageName() : imageData.getServerMetadata().getName();
+                logger.info("{}: no detections computed", label);
+            } else {
+                for (ChannelDetections detections : allDetections) {
+                    ChannelDetectionsConfig detectionsConfig = channelConfigs.stream()
+                            .filter(conf -> detections.getId().equals(conf.getName()))
+                            .findFirst()
+                            .orElse(null);
+                    if (detectionsConfig == null || detectionsConfig.getClassifiers() == null) {
+                        continue;
+                    }
+                    List<PartialClassifier<BufferedImage>> partialClassifiers = new ArrayList<>();
+                    for (ChannelClassifierConfig classifierConfig : detectionsConfig.getClassifiers()) {
+                        try {
+                            partialClassifiers.add(classifierConfig.toPartialClassifier(hierarchy, project));
+                        } catch (IOException e) {
+                            logger.warn("Failed to load classifier {}: {}", classifierConfig.getName(), e.getMessage());
+                        }
+                    }
+                    detections.applyClassifiers(partialClassifiers, imageData);
+                }
+
+                config.getControlChannel().ifPresent(controlName -> {
+                    ChannelDetections control = allDetections.stream()
+                            .filter(det -> det.getId().equals(controlName))
+                            .findFirst()
+                            .orElse(null);
+                    if (control == null) {
+                        return;
+                    }
+                    List<ChannelDetections> others = allDetections.stream()
+                            .filter(det -> !det.getId().equals(controlName))
+                            .toList();
+                    if (others.isEmpty()) {
+                        return;
+                    }
+                    try {
+                        List<AbstractDetections> otherDetections = new ArrayList<>(others);
+                        overlaps.add(new OverlappingDetections(control, otherDetections, true, hierarchy, project, qupath));
+                    } catch (NoCellContainersFoundException e) {
+                        logger.warn("Unable to compute overlaps: {}", e.getMessage());
+                    }
+                });
+
+                if (export && project != null && entry != null) {
+                    String atlasName = config.getAtlasName();
+                    if (atlasName == null) {
+                        atlasName = "allen_mouse_10um_java";
+                    }
+
+                    if (!AtlasManager.isImported(atlasName, hierarchy)) {
+                        logger.warn("No atlas '{}' imported for {}", atlasName, entry.getImageName());
+                    } else {
+                        try {
+                            AtlasManager atlas = new AtlasManager(atlasName, hierarchy);
+                            atlas.fixExclusions();
+                            String imageName = sanitizeFileName(entry.getImageName());
+                            Path projectDir = Projects.getBaseDirectory(project).toPath();
+                            Path resultsPath = projectDir.resolve("results").resolve(imageName + "_regions.tsv");
+                            Path exclusionsPath = projectDir.resolve("regions_to_exclude")
+                                    .resolve(imageName + "_regions_to_exclude.txt");
+                            atlas.saveResults(concat(allDetections, overlaps), resultsPath.toFile(), imageData, entry);
+                            atlas.saveExcludedRegions(exclusionsPath.toFile());
+                        } catch (RuntimeException e) {
+                            logger.error("Failed to export results for {}: {}", entry.getImageName(), e.getMessage());
+                        }
+                    }
+                }
+            }
         }
 
-        List<OverlappingDetections> overlaps = new ArrayList<>();
-        config.getControlChannel().ifPresent(controlName -> {
-            ChannelDetections control = allDetections.stream()
-                    .filter(det -> det.getId().equals(controlName))
-                    .findFirst()
-                    .orElse(null);
-            if (control == null) {
-                return;
-            }
-            List<ChannelDetections> others = allDetections.stream()
-                    .filter(det -> !det.getId().equals(controlName))
-                    .toList();
-            if (others.isEmpty()) {
-                return;
-            }
-            try {
-                List<AbstractDetections> otherDetections = new ArrayList<>(others);
-                overlaps.add(new OverlappingDetections(control, otherDetections, true, hierarchy, project, qupath));
-            } catch (NoCellContainersFoundException e) {
-                logger.warn("Unable to compute overlaps: {}", e.getMessage());
-            }
-        });
-
-        if (!export || project == null || entry == null) {
-            return;
+        if (enablePixelClassification) {
+            PixelClassifierRunner.runPixelClassifiers(qupath, imageData, project, entry, config,
+                    new ArrayList<>(allDetections), export);
         }
-
-        String atlasName = config.getAtlasName();
-        if (atlasName == null) {
-            atlasName = "allen_mouse_10um_java";
-        }
-
-        if (!AtlasManager.isImported(atlasName, hierarchy)) {
-            logger.warn("No atlas '{}' imported for {}", atlasName, entry.getImageName());
-            return;
-        }
-
-            try {
-                AtlasManager atlas = new AtlasManager(atlasName, hierarchy);
-                atlas.fixExclusions();
-                String imageName = sanitizeFileName(entry.getImageName());
-                Path projectDir = Projects.getBaseDirectory(project).toPath();
-                Path resultsPath = projectDir.resolve("results").resolve(imageName + "_regions.tsv");
-                Path exclusionsPath = projectDir.resolve("regions_to_exclude")
-                        .resolve(imageName + "_regions_to_exclude.txt");
-                atlas.saveResults(concat(allDetections, overlaps), resultsPath.toFile(), imageData, entry);
-                atlas.saveExcludedRegions(exclusionsPath.toFile());
-            } catch (RuntimeException e) {
-                logger.error("Failed to export results for {}: {}", entry.getImageName(), e.getMessage());
-            }
     }
 
     private static ProjectsConfig loadConfigForProject(Project<BufferedImage> project) {
