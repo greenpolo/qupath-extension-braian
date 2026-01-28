@@ -12,16 +12,20 @@ import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.Spinner;
+import javafx.scene.control.Separator;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -30,6 +34,7 @@ import qupath.ext.braian.config.ChannelClassifierConfig;
 import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
 import qupath.fx.dialogs.Dialogs;
+import qupath.lib.gui.QuPathGUI;
 
 import java.io.File;
 import java.io.IOException;
@@ -55,6 +60,53 @@ public class ChannelCard extends VBox {
     private final VBox classifierList = new VBox(6);
     private final List<ChannelClassifierConfig> classifiers;
     private Runnable onRemove = () -> {};
+
+    private static final String HELP_URL_THRESHOLD =
+            "https://silvalab.codeberg.page/BraiAn/image-analysis/#:~:text=Automatic%20threshold";
+
+    private static final String TOOLTIP_PIXEL_SIZE =
+            "Choose pixel size at which detection will be performed - higher values are likely to be faster, but may be less accurate; set <= 0 to use the full image resolution";
+    private static final String TOOLTIP_BACKGROUND_RADIUS =
+            "Radius for background estimation, should be > the largest nucleus radius, or <= 0 to turn off background subtraction";
+    private static final String TOOLTIP_BACKGROUND_RECONSTRUCTION =
+            "Use opening-by-reconstruction for background estimation (default is 'true'). Opening by reconstruction tends to give a 'better' background estimate, because it incorporates more information across the image tile used for cell detection. However, in some cases (e.g. images with prominent folds, background staining, or other artefacts) this can cause problems, with the background estimate varying substantially between tiles. Opening by reconstruction was always used in QuPath before v0.4.0, but now it is optional.";
+    private static final String TOOLTIP_MEDIAN_RADIUS =
+            "Radius of median filter used to reduce image texture (optional)";
+    private static final String TOOLTIP_SIGMA =
+            "Sigma value for Gaussian filter used to reduce noise; increasing the value stops nuclei being fragmented, but may reduce the accuracy of boundaries";
+    private static final String TOOLTIP_MIN_AREA =
+            "Detected nuclei with an area < minimum area will be discarded";
+    private static final String TOOLTIP_MAX_AREA =
+            "Detected nuclei with an area > maximum area will be discarded";
+    private static final String TOOLTIP_THRESHOLD =
+            "Intensity threshold - detected nuclei must have a mean intensity >= threshold";
+    private static final String TOOLTIP_HIST_RESOLUTION =
+            "Resolution level at which the histogram is computed";
+    private static final String TOOLTIP_HIST_SMOOTH =
+            "Size of the window used by the moving average to smooth the histogram";
+    private static final String TOOLTIP_HIST_PEAK =
+            "Amount of prominence from the surrounding values in the histogram for a local maximum to be considered a 'peak'";
+    private static final String TOOLTIP_HIST_NPEAK =
+            "n-th peak to use as threshold (starts from 1)";
+    private static final String TOOLTIP_WATERSHED =
+            "Split merged detected nuclei based on shape ('roundness')";
+    private static final String TOOLTIP_CELL_EXPANSION =
+            "Amount by which to expand detected nuclei to approximate the full cell area";
+    private static final String TOOLTIP_INCLUDE_NUCLEI =
+            "If cell expansion is used, optionally include/exclude the nuclei within the detected cells";
+    private static final String TOOLTIP_SMOOTH_BOUNDARIES =
+            "Smooth the detected nucleus/cell boundaries";
+    private static final String TOOLTIP_MAKE_MEASUREMENTS =
+            "Add default shape & intensity measurements during detection";
+    private static final String TOOLTIP_CLASSIFIER_REGIONS =
+            "List of the annotation names for which the classifier is applied";
+
+    private static final String BADGE_GLOBAL_TEXT = "🌍 Global";
+    private static final String BADGE_PARTIAL_TEXT = "🎯 Partial";
+    private static final String BADGE_GLOBAL_STYLE =
+            "-fx-background-color: #E6F4EA; -fx-text-fill: #137333; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
+    private static final String BADGE_PARTIAL_STYLE =
+            "-fx-background-color: #E8F0FE; -fx-text-fill: #1A73E8; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
 
     public ChannelCard(ChannelDetectionsConfig config,
                        List<String> availableChannels,
@@ -128,6 +180,7 @@ public class ChannelCard extends VBox {
             params.setThreshold(value);
             notifyConfigChanged();
         });
+        addTooltip(thresholdSpinner, TOOLTIP_THRESHOLD);
 
         VBox manualBox = new VBox(6, new Label("Threshold"), thresholdSpinner);
 
@@ -154,7 +207,8 @@ public class ChannelCard extends VBox {
             notifyConfigChanged();
         });
 
-        HBox thresholdMode = new HBox(12, new Label("Threshold"), autoThreshold, manualThreshold);
+        Hyperlink thresholdHelp = buildHelpLink(HELP_URL_THRESHOLD);
+        HBox thresholdMode = new HBox(12, new Label("Threshold"), autoThreshold, manualThreshold, thresholdHelp);
         thresholdMode.setAlignment(Pos.CENTER_LEFT);
 
         GridPane standardGrid = new GridPane();
@@ -172,27 +226,8 @@ public class ChannelCard extends VBox {
             params.setRequestedPixelSizeMicrons(value);
             notifyConfigChanged();
         });
+        addTooltip(pixelSize, TOOLTIP_PIXEL_SIZE);
         addGridRow(standardGrid, 0, 3, "Pixel size (µm)", pixelSize);
-
-        Spinner<Double> sigma = createDoubleSpinner(0.0, 5.0, 0.5, params.getSigmaMicrons());
-        sigma.valueProperty().addListener((obs, oldValue, value) -> {
-            if (isUpdatingSupplier.getAsBoolean()) {
-                return;
-            }
-            params.setSigmaMicrons(value);
-            notifyConfigChanged();
-        });
-        addGridRow(standardGrid, 0, 4, "Sigma", sigma);
-
-        Spinner<Double> backgroundRadius = createDoubleSpinner(0.0, 100.0, 1.0, params.getBackgroundRadiusMicrons());
-        backgroundRadius.valueProperty().addListener((obs, oldValue, value) -> {
-            if (isUpdatingSupplier.getAsBoolean()) {
-                return;
-            }
-            params.setBackgroundRadiusMicrons(value);
-            notifyConfigChanged();
-        });
-        addGridRow(standardGrid, 0, 5, "Background radius", backgroundRadius);
 
         Spinner<Double> minArea = createDoubleSpinner(0.0, 5000.0, 1.0, params.getMinAreaMicrons());
         minArea.valueProperty().addListener((obs, oldValue, value) -> {
@@ -202,6 +237,7 @@ public class ChannelCard extends VBox {
             params.setMinAreaMicrons(value);
             notifyConfigChanged();
         });
+        addTooltip(minArea, TOOLTIP_MIN_AREA);
         Spinner<Double> maxArea = createDoubleSpinner(0.0, 10000.0, 1.0, params.getMaxAreaMicrons());
         maxArea.valueProperty().addListener((obs, oldValue, value) -> {
             if (isUpdatingSupplier.getAsBoolean()) {
@@ -210,8 +246,9 @@ public class ChannelCard extends VBox {
             params.setMaxAreaMicrons(value);
             notifyConfigChanged();
         });
-        addGridRow(standardGrid, 0, 6, "Min area", minArea);
-        addGridRow(standardGrid, 0, 7, "Max area", maxArea);
+        addTooltip(maxArea, TOOLTIP_MAX_AREA);
+        addGridRow(standardGrid, 0, 4, "Min area", minArea);
+        addGridRow(standardGrid, 0, 5, "Max area", maxArea);
 
         VBox standardSection = new VBox(8, new Label("Standard parameters"), standardGrid);
 
@@ -233,6 +270,41 @@ public class ChannelCard extends VBox {
         grid.add(lbl, col, row);
         grid.add(control, col + 1, row);
         GridPane.setHgrow(control, Priority.ALWAYS);
+    }
+
+    private void addTooltip(Node node, String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        Tooltip tooltip = new Tooltip(text);
+        tooltip.setWrapText(true);
+        tooltip.setMaxWidth(360);
+        Tooltip.install(node, tooltip);
+    }
+
+    private Hyperlink buildHelpLink(String url) {
+        Hyperlink link = new Hyperlink("(?)");
+        link.setOnAction(event -> QuPathGUI.openInBrowser(url));
+        link.setFocusTraversable(false);
+        link.setTooltip(new Tooltip("Open documentation"));
+        return link;
+    }
+
+    private Label buildSectionHeader(String text) {
+        Label label = new Label(text);
+        label.setStyle("-fx-font-weight: bold;");
+        return label;
+    }
+
+    private void updateClassifierBadge(Label badge, List<String> annotations) {
+        boolean isGlobal = annotations == null || annotations.isEmpty();
+        if (isGlobal) {
+            badge.setText(BADGE_GLOBAL_TEXT);
+            badge.setStyle(BADGE_GLOBAL_STYLE);
+        } else {
+            badge.setText(BADGE_PARTIAL_TEXT);
+            badge.setStyle(BADGE_PARTIAL_STYLE);
+        }
     }
 
     private Spinner<Double> createDoubleSpinner(double min, double max, double step, double value) {
@@ -272,6 +344,7 @@ public class ChannelCard extends VBox {
             ensureAutoThreshold().setResolutionLevel(value);
             notifyConfigChanged();
         });
+        addTooltip(resolutionLevel, TOOLTIP_HIST_RESOLUTION);
 
         Spinner<Integer> smoothWindowSize = createIntegerSpinner(1, 100, autoParams.getSmoothWindowSize(), 1);
         smoothWindowSize.valueProperty().addListener((obs, oldValue, value) -> {
@@ -281,6 +354,7 @@ public class ChannelCard extends VBox {
             ensureAutoThreshold().setSmoothWindowSize(value);
             notifyConfigChanged();
         });
+        addTooltip(smoothWindowSize, TOOLTIP_HIST_SMOOTH);
 
         Spinner<Double> peakProminence = createDoubleSpinner(1, 10000, 10, autoParams.getPeakProminence());
         peakProminence.valueProperty().addListener((obs, oldValue, value) -> {
@@ -290,6 +364,7 @@ public class ChannelCard extends VBox {
             ensureAutoThreshold().setPeakProminence(value);
             notifyConfigChanged();
         });
+        addTooltip(peakProminence, TOOLTIP_HIST_PEAK);
 
         int nPeakValue = Math.max(1, autoParams.getnPeak() + 1);
         Spinner<Integer> nPeak = createIntegerSpinner(1, 10, nPeakValue, 1);
@@ -300,6 +375,7 @@ public class ChannelCard extends VBox {
             ensureAutoThreshold().setnPeak(value);
             notifyConfigChanged();
         });
+        addTooltip(nPeak, TOOLTIP_HIST_NPEAK);
 
         GridPane grid = new GridPane();
         grid.setHgap(12);
@@ -321,6 +397,27 @@ public class ChannelCard extends VBox {
             params.setBackgroundByReconstruction(value);
             notifyConfigChanged();
         });
+        addTooltip(backgroundReconstruction, TOOLTIP_BACKGROUND_RECONSTRUCTION);
+
+        Spinner<Double> backgroundRadius = createDoubleSpinner(0.0, 100.0, 1.0, params.getBackgroundRadiusMicrons());
+        backgroundRadius.valueProperty().addListener((obs, oldValue, value) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            params.setBackgroundRadiusMicrons(value);
+            notifyConfigChanged();
+        });
+        addTooltip(backgroundRadius, TOOLTIP_BACKGROUND_RADIUS);
+
+        Spinner<Double> sigma = createDoubleSpinner(0.0, 5.0, 0.5, params.getSigmaMicrons());
+        sigma.valueProperty().addListener((obs, oldValue, value) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            params.setSigmaMicrons(value);
+            notifyConfigChanged();
+        });
+        addTooltip(sigma, TOOLTIP_SIGMA);
 
         Spinner<Double> medianRadius = createDoubleSpinner(0.0, 20.0, 0.5, params.getMedianRadiusMicrons());
         medianRadius.valueProperty().addListener((obs, oldValue, value) -> {
@@ -330,6 +427,7 @@ public class ChannelCard extends VBox {
             params.setMedianRadiusMicrons(value);
             notifyConfigChanged();
         });
+        addTooltip(medianRadius, TOOLTIP_MEDIAN_RADIUS);
 
         CheckBox watershed = new CheckBox("Watershed split");
         watershed.setSelected(params.isWatershedPostProcess());
@@ -340,6 +438,7 @@ public class ChannelCard extends VBox {
             params.setWatershedPostProcess(value);
             notifyConfigChanged();
         });
+        addTooltip(watershed, TOOLTIP_WATERSHED);
 
         Spinner<Double> cellExpansion = createDoubleSpinner(0.0, 50.0, 1.0, params.getCellExpansionMicrons());
         cellExpansion.valueProperty().addListener((obs, oldValue, value) -> {
@@ -349,6 +448,7 @@ public class ChannelCard extends VBox {
             params.setCellExpansionMicrons(value);
             notifyConfigChanged();
         });
+        addTooltip(cellExpansion, TOOLTIP_CELL_EXPANSION);
 
         CheckBox includeNuclei = new CheckBox("Include nuclei");
         includeNuclei.setSelected(params.isIncludeNuclei());
@@ -359,6 +459,7 @@ public class ChannelCard extends VBox {
             params.setIncludeNuclei(value);
             notifyConfigChanged();
         });
+        addTooltip(includeNuclei, TOOLTIP_INCLUDE_NUCLEI);
 
         CheckBox smoothBoundaries = new CheckBox("Smooth boundaries");
         smoothBoundaries.setSelected(params.isSmoothBoundaries());
@@ -369,6 +470,7 @@ public class ChannelCard extends VBox {
             params.setSmoothBoundaries(value);
             notifyConfigChanged();
         });
+        addTooltip(smoothBoundaries, TOOLTIP_SMOOTH_BOUNDARIES);
 
         CheckBox makeMeasurements = new CheckBox("Make measurements");
         makeMeasurements.setSelected(params.isMakeMeasurements());
@@ -379,20 +481,27 @@ public class ChannelCard extends VBox {
             params.setMakeMeasurements(value);
             notifyConfigChanged();
         });
+        addTooltip(makeMeasurements, TOOLTIP_MAKE_MEASUREMENTS);
 
-        GridPane grid = new GridPane();
-        grid.setHgap(12);
-        grid.setVgap(8);
-        addGridRow(grid, 0, 0, "Median radius", medianRadius);
-        addGridRow(grid, 0, 1, "Cell expansion (µm)", cellExpansion);
+        GridPane preProcessingGrid = new GridPane();
+        preProcessingGrid.setHgap(12);
+        preProcessingGrid.setVgap(8);
+        addGridRow(preProcessingGrid, 0, 0, "Median radius", medianRadius);
+        addGridRow(preProcessingGrid, 0, 1, "Sigma", sigma);
+        addGridRow(preProcessingGrid, 0, 2, "Background radius", backgroundRadius);
 
-        VBox box = new VBox(8,
-                backgroundReconstruction,
-                watershed,
-                grid,
-                includeNuclei,
-                smoothBoundaries,
-                makeMeasurements
+        VBox detectionLogicBox = new VBox(6, backgroundReconstruction, watershed);
+
+        GridPane geometryGrid = new GridPane();
+        geometryGrid.setHgap(12);
+        geometryGrid.setVgap(8);
+        addGridRow(geometryGrid, 0, 0, "Cell expansion (µm)", cellExpansion);
+
+        VBox box = new VBox(10,
+                buildSectionHeader("Pre-processing"), new Separator(), preProcessingGrid,
+                buildSectionHeader("Detection Logic"), new Separator(), detectionLogicBox,
+                buildSectionHeader("Cell Geometry"), new Separator(), geometryGrid, includeNuclei, smoothBoundaries,
+                buildSectionHeader("Output"), new Separator(), makeMeasurements
         );
         return box;
     }
@@ -418,31 +527,49 @@ public class ChannelCard extends VBox {
         String baseName = classifier.getName();
         String fileName = baseName == null || baseName.isBlank() ? "(unnamed).json" : baseName + ".json";
         Label nameLabel = new Label(fileName);
+        nameLabel.setStyle("-fx-font-weight: bold;");
         nameLabel.setMinWidth(160);
         nameLabel.setMaxWidth(Double.MAX_VALUE);
+
+        Label badge = new Label();
+        updateClassifierBadge(badge, classifier.getAnnotationsToClassify());
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button remove = new Button("Remove");
+        HBox header = new HBox(8, nameLabel, badge, spacer, remove);
+        header.setAlignment(Pos.CENTER_LEFT);
+
         TextField annotations = new TextField(formatAnnotations(classifier.getAnnotationsToClassify()));
         annotations.setPromptText("Restrict to regions (optional)");
+        addTooltip(annotations, TOOLTIP_CLASSIFIER_REGIONS);
         annotations.textProperty().addListener((obs, oldValue, value) -> {
             if (isUpdatingSupplier.getAsBoolean()) {
                 return;
             }
             List<String> parsed = parseAnnotations(value);
             classifier.setAnnotationsToClassify(parsed.isEmpty() ? null : parsed);
+            updateClassifierBadge(badge, classifier.getAnnotationsToClassify());
             config.setClassifiers(new ArrayList<>(classifiers));
             notifyConfigChanged();
         });
 
-        Button remove = new Button("Remove");
-        HBox row = new HBox(8, nameLabel, annotations, remove);
+        VBox card = new VBox(8, header, annotations);
+        card.setPadding(new Insets(10));
+        card.setStyle("-fx-background-color: -fx-control-inner-background;"
+                + "-fx-background-radius: 6;"
+                + "-fx-border-color: -fx-box-border;"
+                + "-fx-border-radius: 6;");
+
         remove.setOnAction(event -> {
             classifiers.remove(classifier);
             config.setClassifiers(new ArrayList<>(classifiers));
-            classifierList.getChildren().remove(row);
+            classifierList.getChildren().remove(card);
             notifyConfigChanged();
         });
-        row.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(annotations, Priority.ALWAYS);
-        return row;
+
+        return card;
     }
 
     private void addClassifierFromChooser() {
