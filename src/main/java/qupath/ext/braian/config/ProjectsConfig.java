@@ -98,8 +98,11 @@ public class ProjectsConfig {
 
     private String classForDetections = null;
     private String atlasName = "allen_mouse_10um_java";
+    private boolean enableCellDetection = true;
+    private boolean enablePixelClassification = false;
     private DetectionsCheckConfig detectionsCheck = new DetectionsCheckConfig();
     private List<ChannelDetectionsConfig> channelDetections = List.of();
+    private List<PixelClassifierConfig> pixelClassifiers = List.of();
 
     public String getClassForDetections() {
         return classForDetections;
@@ -140,6 +143,22 @@ public class ProjectsConfig {
         this.atlasName = atlasName;
     }
 
+    public boolean isEnableCellDetection() {
+        return enableCellDetection;
+    }
+
+    public void setEnableCellDetection(boolean enableCellDetection) {
+        this.enableCellDetection = enableCellDetection;
+    }
+
+    public boolean isEnablePixelClassification() {
+        return enablePixelClassification;
+    }
+
+    public void setEnablePixelClassification(boolean enablePixelClassification) {
+        this.enablePixelClassification = enablePixelClassification;
+    }
+
     public DetectionsCheckConfig getDetectionsCheck() {
         return detectionsCheck;
     }
@@ -172,5 +191,13 @@ public class ProjectsConfig {
 
     public void setChannelDetections(List<ChannelDetectionsConfig> channelDetections) {
         this.channelDetections = channelDetections;
+    }
+
+    public List<PixelClassifierConfig> getPixelClassifiers() {
+        return pixelClassifiers;
+    }
+
+    public void setPixelClassifiers(List<PixelClassifierConfig> pixelClassifiers) {
+        this.pixelClassifiers = pixelClassifiers;
     }
 }
