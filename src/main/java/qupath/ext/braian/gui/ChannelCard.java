@@ -32,6 +32,7 @@ import javafx.stage.Stage;
 import qupath.ext.braian.config.AutoThresholdParmameters;
 import qupath.ext.braian.config.ChannelClassifierConfig;
 import qupath.ext.braian.config.ChannelDetectionsConfig;
+import qupath.ext.braian.config.PixelClassifierConfig;
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
 import qupath.fx.dialogs.Dialogs;
 import qupath.lib.gui.QuPathGUI;
@@ -58,7 +59,9 @@ public class ChannelCard extends VBox {
     private final Runnable onChannelNameChanged;
     private final BooleanSupplier isUpdatingSupplier;
     private final VBox classifierList = new VBox(6);
+    private final VBox pixelClassifierList = new VBox(6);
     private final List<ChannelClassifierConfig> classifiers;
+    private final List<PixelClassifierConfig> pixelClassifiers;
     private Runnable onRemove = () -> {};
 
     private static final String HELP_URL_THRESHOLD =
@@ -100,6 +103,8 @@ public class ChannelCard extends VBox {
             "Add default shape & intensity measurements during detection";
     private static final String TOOLTIP_CLASSIFIER_REGIONS =
             "List of the annotation names for which the classifier is applied";
+    private static final String TOOLTIP_PIXEL_CLASSIFIER_REGIONS =
+            "List of atlas regions for which the pixel classifier is applied";
 
     private static final String BADGE_GLOBAL_TEXT = "🌍 Global";
     private static final String BADGE_PARTIAL_TEXT = "🎯 Partial";
@@ -125,6 +130,7 @@ public class ChannelCard extends VBox {
         this.onChannelNameChanged = onChannelNameChanged;
         this.isUpdatingSupplier = isUpdatingSupplier;
         this.classifiers = new ArrayList<>(Optional.ofNullable(config.getClassifiers()).orElse(List.of()));
+        this.pixelClassifiers = new ArrayList<>(Optional.ofNullable(config.getPixelClassifiers()).orElse(List.of()));
 
         setSpacing(12);
         setPadding(new Insets(12));
@@ -165,6 +171,26 @@ public class ChannelCard extends VBox {
         HBox header = new HBox(8, new Label("Source Ch"), channelIdSpinner, new Label("-> Name"), channelName, removeButton);
         header.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(channelName, Priority.ALWAYS);
+
+        CheckBox enableCellDetection = new CheckBox("Enable Cell Detection");
+        enableCellDetection.setSelected(config.isEnableCellDetection());
+        enableCellDetection.selectedProperty().addListener((obs, oldValue, selected) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            config.setEnableCellDetection(selected);
+            notifyConfigChanged();
+        });
+
+        CheckBox enablePixelClassification = new CheckBox("Enable Pixel Classification");
+        enablePixelClassification.setSelected(config.isEnablePixelClassification());
+        enablePixelClassification.selectedProperty().addListener((obs, oldValue, selected) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            config.setEnablePixelClassification(selected);
+            notifyConfigChanged();
+        });
 
         ToggleGroup thresholdGroup = new ToggleGroup();
         RadioButton autoThreshold = new RadioButton("Auto");
@@ -258,7 +284,16 @@ public class ChannelCard extends VBox {
         TitledPane classifiersPane = new TitledPane("Classifiers", buildClassifierSection(channelName));
         classifiersPane.setExpanded(false);
 
-        getChildren().addAll(header, standardSection, advancedPane, classifiersPane);
+        VBox cellDetectionSection = new VBox(10, standardSection, advancedPane, classifiersPane);
+        cellDetectionSection.managedProperty().bind(enableCellDetection.selectedProperty());
+        cellDetectionSection.visibleProperty().bind(enableCellDetection.selectedProperty());
+
+        TitledPane pixelClassifierPane = new TitledPane("Pixel Classifiers", buildPixelClassifierSection(channelName));
+        pixelClassifierPane.setExpanded(false);
+        pixelClassifierPane.managedProperty().bind(enablePixelClassification.selectedProperty());
+        pixelClassifierPane.visibleProperty().bind(enablePixelClassification.selectedProperty());
+
+        getChildren().addAll(header, enableCellDetection, cellDetectionSection, enablePixelClassification, pixelClassifierPane);
     }
 
     public void setOnRemove(Runnable onRemove) {
@@ -523,6 +558,23 @@ public class ChannelCard extends VBox {
         return section;
     }
 
+    private VBox buildPixelClassifierSection(ComboBox<String> channelName) {
+        pixelClassifierList.getChildren().clear();
+        for (PixelClassifierConfig classifier : pixelClassifiers) {
+            pixelClassifierList.getChildren().add(buildPixelClassifierRow(classifier));
+        }
+
+        Button addClassifier = new Button("+ Add Pixel Classifier");
+        addClassifier.disableProperty().bind(Bindings.createBooleanBinding(() -> {
+            String name = channelName.getValue();
+            return name == null || name.isBlank();
+        }, channelName.valueProperty()));
+        addClassifier.setOnAction(event -> addPixelClassifierCard());
+
+        VBox section = new VBox(8, pixelClassifierList, addClassifier);
+        return section;
+    }
+
     private Node buildClassifierRow(ChannelClassifierConfig classifier) {
         String baseName = classifier.getName();
         String fileName = baseName == null || baseName.isBlank() ? "(unnamed).json" : baseName + ".json";
@@ -572,6 +624,75 @@ public class ChannelCard extends VBox {
         return card;
     }
 
+    private Node buildPixelClassifierRow(PixelClassifierConfig classifier) {
+        TextField classifierField = new TextField();
+        classifierField.setPromptText("Select a .json classifier");
+        classifierField.setEditable(false);
+        classifierField.setText(formatPixelClassifierName(classifier.getClassifierName()));
+
+        Label badge = new Label();
+        updateClassifierBadge(badge, classifier.getRegionFilter());
+
+        Button browseButton = new Button("Browse...");
+        browseButton.setOnAction(event -> choosePixelClassifier(classifier, classifierField));
+
+        HBox classifierRow = new HBox(8, new Label("Classifier"), classifierField, badge, browseButton);
+        classifierRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(classifierField, Priority.ALWAYS);
+
+        TextField measurementField = new TextField();
+        measurementField.setPromptText("Measurement ID (e.g. red_projections)");
+        measurementField.setText(Optional.ofNullable(classifier.getMeasurementId()).orElse(""));
+        measurementField.textProperty().addListener((obs, oldValue, value) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            String trimmed = value != null ? value.trim() : "";
+            classifier.setMeasurementId(trimmed.isEmpty() ? null : trimmed);
+            notifyConfigChanged();
+        });
+
+        TextField regionField = new TextField(formatRegionFilter(classifier.getRegionFilter()));
+        regionField.setPromptText("Restrict to regions (optional)");
+        addTooltip(regionField, TOOLTIP_PIXEL_CLASSIFIER_REGIONS);
+        regionField.textProperty().addListener((obs, oldValue, value) -> {
+            if (isUpdatingSupplier.getAsBoolean()) {
+                return;
+            }
+            List<String> parsed = parseRegionFilter(value);
+            classifier.setRegionFilter(parsed.isEmpty() ? null : parsed);
+            updateClassifierBadge(badge, classifier.getRegionFilter());
+            config.setPixelClassifiers(new ArrayList<>(pixelClassifiers));
+            notifyConfigChanged();
+        });
+
+        Button removeButton = new Button("Remove");
+
+        HBox measurementRow = new HBox(8, new Label("Measurement"), measurementField, removeButton);
+        measurementRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(measurementField, Priority.ALWAYS);
+
+        HBox regionRow = new HBox(8, new Label("Region Filter"), regionField);
+        regionRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(regionField, Priority.ALWAYS);
+
+        VBox card = new VBox(8, classifierRow, measurementRow, regionRow);
+        card.setPadding(new Insets(10));
+        card.setStyle("-fx-background-color: -fx-control-inner-background;"
+                + "-fx-background-radius: 6;"
+                + "-fx-border-color: -fx-box-border;"
+                + "-fx-border-radius: 6;");
+
+        removeButton.setOnAction(event -> {
+            pixelClassifiers.remove(classifier);
+            config.setPixelClassifiers(new ArrayList<>(pixelClassifiers));
+            pixelClassifierList.getChildren().remove(card);
+            notifyConfigChanged();
+        });
+
+        return card;
+    }
+
     private void addClassifierFromChooser() {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Select classifier");
@@ -613,6 +734,53 @@ public class ChannelCard extends VBox {
         notifyConfigChanged();
     }
 
+    private void addPixelClassifierCard() {
+        PixelClassifierConfig classifier = new PixelClassifierConfig();
+        pixelClassifiers.add(classifier);
+        config.setPixelClassifiers(new ArrayList<>(pixelClassifiers));
+        pixelClassifierList.getChildren().add(buildPixelClassifierRow(classifier));
+        notifyConfigChanged();
+    }
+
+    private void choosePixelClassifier(PixelClassifierConfig config, TextField classifierField) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Select pixel classifier");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("QuPath classifier", "*.json"));
+        File selected = chooser.showOpenDialog(owner);
+        if (selected == null) {
+            return;
+        }
+        Path selectedPath = selected.toPath();
+        Path targetDir = resolveClassifierTargetDir();
+        if (targetDir == null) {
+            Dialogs.showErrorMessage("BraiAnDetect", "No project directory is available for classifier storage.");
+            return;
+        }
+
+        if (!isUnderAllowedRoot(selectedPath)) {
+            boolean copy = Dialogs.showConfirmDialog(
+                    "Copy classifier",
+                    "Copy classifier to " + targetDir + "? BraiAn requires classifiers to be stored in the project or its parent folder."
+            );
+            if (!copy) {
+                return;
+            }
+            Path targetPath = targetDir.resolve(selected.getName());
+            try {
+                Files.copy(selectedPath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                Dialogs.showErrorMessage("BraiAnDetect", "Failed to copy classifier: " + e.getMessage());
+                return;
+            }
+            selectedPath = targetPath;
+        }
+
+        String baseName = stripJsonExtension(selectedPath.getFileName().toString());
+        config.setClassifierName(baseName);
+        classifierField.setText(baseName + ".json");
+        notifyConfigChanged();
+    }
+
     private Path resolveClassifierTargetDir() {
         Path configRoot = configRootSupplier.get();
         if (configRoot != null) {
@@ -650,6 +818,13 @@ public class ChannelCard extends VBox {
         return fileName;
     }
 
+    private String formatPixelClassifierName(String classifierName) {
+        if (classifierName == null || classifierName.isBlank()) {
+            return "";
+        }
+        return classifierName + ".json";
+    }
+
     private List<String> parseAnnotations(String value) {
         if (value == null || value.isBlank()) {
             return List.of();
@@ -665,11 +840,19 @@ public class ChannelCard extends VBox {
         return results;
     }
 
+    private List<String> parseRegionFilter(String value) {
+        return parseAnnotations(value);
+    }
+
     private String formatAnnotations(List<String> annotations) {
         if (annotations == null || annotations.isEmpty()) {
             return "";
         }
         return String.join(", ", annotations);
+    }
+
+    private String formatRegionFilter(List<String> regionFilter) {
+        return formatAnnotations(regionFilter);
     }
 
     private void notifyConfigChanged() {

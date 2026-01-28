@@ -72,6 +72,8 @@ public class BraiAnDetectDialog {
     private final BooleanProperty batchReady = new SimpleBooleanProperty(false);
     private final BooleanProperty running = new SimpleBooleanProperty(false);
     private final TextField batchRootField = new TextField();
+    private final BooleanProperty importBatchMode = new SimpleBooleanProperty(false);
+    private final TextField importBatchRootField = new TextField();
     private final PauseTransition saveDebounce = new PauseTransition(Duration.millis(500));
     private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService runExecutor = Executors.newSingleThreadExecutor();
@@ -189,29 +191,71 @@ public class BraiAnDetectDialog {
         VBox container = new VBox(16);
         container.setPadding(new Insets(16));
 
-        VBox actionPanel = new VBox(8);
-        Button importCurrentButton = new Button("Import to Current Image");
-        Button importProjectButton = new Button("Import to Project");
-        Button importExperimentButton = new Button("Import to Experiment");
+        ToggleGroup scopeGroup = new ToggleGroup();
+        RadioButton currentImageToggle = new RadioButton("Current Image");
+        RadioButton currentProjectToggle = new RadioButton("Current Project");
+        RadioButton experimentToggle = new RadioButton("Experiment");
+        currentImageToggle.setToggleGroup(scopeGroup);
+        currentProjectToggle.setToggleGroup(scopeGroup);
+        experimentToggle.setToggleGroup(scopeGroup);
+        currentProjectToggle.setSelected(true);
 
-        importCurrentButton.disableProperty().bind(running);
-        importProjectButton.disableProperty().bind(running);
-        importExperimentButton.disableProperty().bind(running);
+        HBox scopeRow = new HBox(16, new Label("Scope:"), currentImageToggle, currentProjectToggle, experimentToggle);
+        scopeRow.setAlignment(Pos.CENTER_LEFT);
 
-        importCurrentButton.setOnAction(event -> handleImportCurrent());
-        importProjectButton.setOnAction(event -> handleImportProject());
-        importExperimentButton.setOnAction(event -> handleImportExperiment());
+        currentImageToggle.selectedProperty().addListener((obs, oldValue, selected) -> {
+            if (selected) {
+                importBatchMode.set(false);
+            }
+        });
+        currentProjectToggle.selectedProperty().addListener((obs, oldValue, selected) -> {
+            if (selected) {
+                importBatchMode.set(false);
+            }
+        });
+        experimentToggle.selectedProperty().addListener((obs, oldValue, selected) -> {
+            if (selected) {
+                importBatchMode.set(true);
+                refreshDiscoveredProjects(resolveImportBatchRoot());
+            }
+        });
 
-        actionPanel.getChildren().addAll(importCurrentButton, importProjectButton, importExperimentButton);
+        HBox batchChooserRow = new HBox(8);
+        batchChooserRow.setAlignment(Pos.CENTER_LEFT);
+        importBatchRootField.setPromptText("Select a root folder containing QuPath projects");
+        importBatchRootField.setEditable(true);
+        importBatchRootField.textProperty().addListener((obs, oldValue, value) -> {
+            if (importBatchMode.get()) {
+                refreshDiscoveredProjects(resolveImportBatchRoot());
+            }
+        });
+        Button browseButton = new Button("Browse");
+        browseButton.setOnAction(event -> chooseBatchFolder(stage, importBatchRootField));
+        HBox.setHgrow(importBatchRootField, Priority.ALWAYS);
+        batchChooserRow.getChildren().addAll(new Label("Projects Folder:"), importBatchRootField, browseButton);
+        batchChooserRow.managedProperty().bind(importBatchMode);
+        batchChooserRow.visibleProperty().bind(importBatchMode);
 
-        VBox projectListPanel = buildProjectListPanel();
+        Button importButton = new Button("Import Atlas");
+        importButton.disableProperty().bind(running);
+        importButton.setOnAction(event -> {
+            if (currentImageToggle.isSelected()) {
+                handleImportCurrent();
+            } else if (currentProjectToggle.isSelected()) {
+                handleImportProject();
+            } else {
+                handleImportExperiment();
+            }
+        });
+
+        VBox projectListPanel = buildProjectListPanel(importBatchMode);
 
         Label warningLabel = new Label(
                 "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
         warningLabel.getStyleClass().add("warning");
 
-        container.getChildren().addAll(actionPanel, projectListPanel, warningLabel);
-        return new Tab("Atlas Import", container);
+        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importButton, warningLabel);
+        return new Tab("Project Preparation", container);
     }
 
     private Tab buildExperimentTab() {
@@ -253,13 +297,13 @@ public class BraiAnDetectDialog {
             }
         });
         Button browseButton = new Button("Browse");
-        browseButton.setOnAction(event -> chooseBatchFolder(stage));
+        browseButton.setOnAction(event -> chooseBatchFolder(stage, batchRootField));
         HBox.setHgrow(batchRootField, Priority.ALWAYS);
         batchChooserRow.getChildren().addAll(new Label("Projects Folder:"), batchRootField, browseButton);
         batchChooserRow.managedProperty().bind(batchMode);
         batchChooserRow.visibleProperty().bind(batchMode);
 
-        VBox projectListPanel = buildProjectListPanel();
+        VBox projectListPanel = buildProjectListPanel(batchMode);
         scopeSection.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, new Separator());
 
         this.experimentPane = new ExperimentPane(
@@ -283,7 +327,7 @@ public class BraiAnDetectDialog {
         BorderPane layout = new BorderPane();
         layout.setTop(scopeSection);
         layout.setCenter(scrollPane);
-        return new Tab("Analysis & Detection", layout);
+        return new Tab("Detection", layout);
     }
 
     private void handleImportCurrent() {
@@ -301,17 +345,17 @@ public class BraiAnDetectDialog {
     }
 
     private void handleImportExperiment() {
-        Path rootPath = resolveBatchRoot();
+        Path rootPath = resolveImportBatchRoot();
         if (rootPath == null) {
-            chooseBatchFolder(stage);
-            rootPath = resolveBatchRoot();
+            chooseBatchFolder(stage, importBatchRootField);
+            rootPath = resolveImportBatchRoot();
         }
         if (rootPath == null) {
             Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before importing to an experiment.");
             return;
         }
 
-        refreshDiscoveredProjects();
+        refreshDiscoveredProjects(rootPath);
         List<Path> selectedProjects = getSelectedProjectFiles();
         if (selectedProjects.isEmpty()) {
             Dialogs.showErrorMessage("BraiAnDetect", "Select at least one project to import.");
@@ -334,39 +378,43 @@ public class BraiAnDetectDialog {
         if (batchMode.get()) {
             Path rootPath = resolveBatchRoot();
             if (rootPath == null) {
-                Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before running batch analysis.");
+                Dialogs.showErrorMessage("BraiAnDetect", "Select a projects folder before running batch detection.");
                 return;
             }
             List<Path> selectedProjects = getSelectedProjectFiles();
             if (selectedProjects.isEmpty()) {
-                Dialogs.showErrorMessage("BraiAnDetect", "Select at least one project to analyze.");
+                Dialogs.showErrorMessage("BraiAnDetect", "Select at least one project to run detection.");
                 return;
             }
-            runAsync("Run Batch Analysis", () -> BraiAnAnalysisRunner.runBatch(qupath, rootPath, selectedProjects));
+            runAsync("Run Batch Detection", () -> BraiAnAnalysisRunner.runBatch(qupath, rootPath, selectedProjects));
         } else {
-            runAsync("Run Analysis", () -> BraiAnAnalysisRunner.runProject(qupath));
+            runAsync("Run Detection", () -> BraiAnAnalysisRunner.runProject(qupath));
         }
     }
 
-    private VBox buildProjectListPanel() {
+    private VBox buildProjectListPanel(BooleanProperty visibility) {
         ListView<DiscoveredProject> listView = new ListView<>(discoveredProjects);
         listView.setCellFactory(CheckBoxListCell.forListView(DiscoveredProject::selectedProperty));
         listView.setPrefHeight(160);
-        listView.managedProperty().bind(batchMode);
-        listView.visibleProperty().bind(batchMode);
+        listView.managedProperty().bind(visibility);
+        listView.visibleProperty().bind(visibility);
 
         Label label = new Label("Discovered projects");
-        label.managedProperty().bind(batchMode);
-        label.visibleProperty().bind(batchMode);
+        label.managedProperty().bind(visibility);
+        label.visibleProperty().bind(visibility);
 
         VBox panel = new VBox(8, label, listView);
-        panel.managedProperty().bind(batchMode);
-        panel.visibleProperty().bind(batchMode);
+        panel.managedProperty().bind(visibility);
+        panel.visibleProperty().bind(visibility);
         return panel;
     }
 
     private void refreshDiscoveredProjects() {
         Path rootPath = resolveBatchRoot();
+        refreshDiscoveredProjects(rootPath);
+    }
+
+    private void refreshDiscoveredProjects(Path rootPath) {
         if (rootPath == null) {
             discoveredProjects.clear();
             return;
@@ -498,7 +546,7 @@ public class BraiAnDetectDialog {
         return projectDir.resolve(CONFIG_FILENAME);
     }
 
-    private void chooseBatchFolder(Window owner) {
+    private void chooseBatchFolder(Window owner, TextField targetField) {
         DirectoryChooser chooser = new DirectoryChooser();
         chooser.setTitle("Select QuPath Projects Folder");
         Path projectDir = resolveProjectDirectory();
@@ -507,7 +555,7 @@ public class BraiAnDetectDialog {
         }
         var selection = chooser.showDialog(owner);
         if (selection != null) {
-            batchRootField.setText(selection.getAbsolutePath());
+            targetField.setText(selection.getAbsolutePath());
         }
     }
 
@@ -520,6 +568,18 @@ public class BraiAnDetectDialog {
 
     private Path resolveBatchRoot() {
         String root = batchRootField.getText();
+        if (root == null || root.isBlank()) {
+            return null;
+        }
+        Path path = Path.of(root);
+        if (!Files.isDirectory(path)) {
+            return null;
+        }
+        return path;
+    }
+
+    private Path resolveImportBatchRoot() {
+        String root = importBatchRootField.getText();
         if (root == null || root.isBlank()) {
             return null;
         }

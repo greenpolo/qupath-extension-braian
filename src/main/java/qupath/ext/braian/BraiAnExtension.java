@@ -57,7 +57,7 @@ public class BraiAnExtension implements QuPathExtension {
                         logger.warn("BraiAnDetect GUI not opened: {}", e.getMessage());
                     }
                 },
-                "Atlas Import (ABBA)");
+                "Project Preparation (ABBA)");
 
         var detectionAction = ActionTools.createAction(
                 () -> {
@@ -67,7 +67,7 @@ public class BraiAnExtension implements QuPathExtension {
                         logger.warn("BraiAnDetect GUI not opened: {}", e.getMessage());
                     }
                 },
-                "Analysis & Detection");
+                "Detection");
 
         var showExclusions = ActionTools.createAction(
                 () -> {
