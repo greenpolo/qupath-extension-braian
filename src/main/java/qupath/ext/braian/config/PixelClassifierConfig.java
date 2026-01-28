@@ -4,9 +4,12 @@
 
 package qupath.ext.braian.config;
 
+import java.util.List;
+
 public class PixelClassifierConfig {
     private String classifierName;
     private String measurementId;
+    private List<String> regionFilter;
 
     public String getClassifierName() {
         return classifierName;
@@ -22,5 +25,13 @@ public class PixelClassifierConfig {
 
     public void setMeasurementId(String measurementId) {
         this.measurementId = measurementId;
+    }
+
+    public List<String> getRegionFilter() {
+        return regionFilter;
+    }
+
+    public void setRegionFilter(List<String> regionFilter) {
+        this.regionFilter = regionFilter;
     }
 }

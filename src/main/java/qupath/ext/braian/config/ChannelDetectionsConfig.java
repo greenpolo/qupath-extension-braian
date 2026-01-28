@@ -4,13 +4,18 @@
 
 package qupath.ext.braian.config;
 
+import java.util.ArrayList;
 import java.util.List;
+
 
 public class ChannelDetectionsConfig {
     private String name;
     private WatershedCellDetectionConfig parameters = new WatershedCellDetectionConfig();
     private int inputChannelID = 1; // 1-based index
     private List<ChannelClassifierConfig> classifiers = List.of(); // maps classifier name to annotation names
+    private boolean enableCellDetection = true;
+    private boolean enablePixelClassification = false;
+    private List<PixelClassifierConfig> pixelClassifiers = new ArrayList<>();
 
     public int getInputChannelID() {
         return inputChannelID;
@@ -46,5 +51,29 @@ public class ChannelDetectionsConfig {
             classifier.setChannel(this.name);
         }
         this.classifiers = classifiers;
+    }
+
+    public boolean isEnableCellDetection() {
+        return enableCellDetection;
+    }
+
+    public void setEnableCellDetection(boolean enableCellDetection) {
+        this.enableCellDetection = enableCellDetection;
+    }
+
+    public boolean isEnablePixelClassification() {
+        return enablePixelClassification;
+    }
+
+    public void setEnablePixelClassification(boolean enablePixelClassification) {
+        this.enablePixelClassification = enablePixelClassification;
+    }
+
+    public List<PixelClassifierConfig> getPixelClassifiers() {
+        return pixelClassifiers;
+    }
+
+    public void setPixelClassifiers(List<PixelClassifierConfig> pixelClassifiers) {
+        this.pixelClassifiers = pixelClassifiers;
     }
 }
