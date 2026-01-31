@@ -34,19 +34,37 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Runner for pixel classifier execution and results export.
+ * <p>
+ * This class applies configured pixel classifiers to atlas regions and optionally exports measurements
+ * to TSV files.
+ */
 public final class PixelClassifierRunner {
     private static final Logger logger = LoggerFactory.getLogger(PixelClassifierRunner.class);
 
     private PixelClassifierRunner() {
     }
 
+    /**
+     * Runs configured pixel classifiers for an image and optionally exports results.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param imageData the image to process
+     * @param project the current project; required for export
+     * @param entry the project entry corresponding to {@code imageData}; required for export
+     * @param config the BraiAn configuration
+     * @param detections optional list of detections used to determine which atlas regions to include
+     * @param export if true, exports results to the project {@code results/} directory
+     * @throws IllegalArgumentException if {@code imageData} is null
+     */
     public static void runPixelClassifiers(QuPathGUI qupath,
-                                           ImageData<BufferedImage> imageData,
-                                           Project<BufferedImage> project,
-                                           ProjectImageEntry<BufferedImage> entry,
-                                           ProjectsConfig config,
-                                           List<? extends AbstractDetections> detections,
-                                           boolean export) {
+                                            ImageData<BufferedImage> imageData,
+                                            Project<BufferedImage> project,
+                                            ProjectImageEntry<BufferedImage> entry,
+                                            ProjectsConfig config,
+                                            List<? extends AbstractDetections> detections,
+                                            boolean export) {
         if (imageData == null) {
             throw new IllegalArgumentException("ImageData is required for pixel classification.");
         }

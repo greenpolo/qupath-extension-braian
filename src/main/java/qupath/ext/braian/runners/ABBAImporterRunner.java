@@ -23,6 +23,12 @@ import java.nio.file.Path;
 
 import java.util.List;
 
+/**
+ * Runner for importing warped atlas annotations from the ABBA extension.
+ * <p>
+ * This class provides helpers to import the atlas for the current image, the current project, or
+ * for a batch of QuPath projects.
+ */
 public final class ABBAImporterRunner {
     private static final Logger logger = LoggerFactory.getLogger(ABBAImporterRunner.class);
 
@@ -33,6 +39,12 @@ public final class ABBAImporterRunner {
     private ABBAImporterRunner() {
     }
 
+    /**
+     * Imports the atlas into the image currently open in QuPath.
+     *
+     * @param qupath the QuPath GUI instance
+     * @throws IllegalStateException if no image is open or if the ABBA extension is not available
+     */
     public static void runCurrentImage(QuPathGUI qupath) {
         if (!AbbaReflectionBridge.isAvailable()) {
             throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());
@@ -56,6 +68,12 @@ public final class ABBAImporterRunner {
         }
     }
 
+    /**
+     * Imports the atlas into every image entry of the current QuPath project.
+     *
+     * @param qupath the QuPath GUI instance
+     * @throws IllegalStateException if no project is open or if the ABBA extension is not available
+     */
     public static void runProject(QuPathGUI qupath) {
         if (!AbbaReflectionBridge.isAvailable()) {
             throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());
@@ -91,6 +109,15 @@ public final class ABBAImporterRunner {
         System.gc();
     }
 
+    /**
+     * Discovers QuPath projects under {@code rootPath} and imports the atlas into each of them.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param rootPath root directory containing QuPath projects
+     * @throws IllegalArgumentException if {@code rootPath} is invalid
+     * @throws IllegalStateException if no projects are found or if the ABBA extension is not available
+     * @see ProjectDiscoveryService#discoverProjectFiles(Path)
+     */
     public static void runBatch(QuPathGUI qupath, Path rootPath) {
         if (!AbbaReflectionBridge.isAvailable()) {
             throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());
@@ -106,6 +133,14 @@ public final class ABBAImporterRunner {
         runBatch(qupath, projectFiles);
     }
 
+    /**
+     * Imports the atlas into a batch of QuPath projects.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param projectFiles list of QuPath project files (e.g. {@code project.qpproj})
+     * @throws IllegalArgumentException if {@code projectFiles} is null or empty
+     * @throws IllegalStateException if the ABBA extension is not available
+     */
     public static void runBatch(QuPathGUI qupath, List<Path> projectFiles) {
         if (!AbbaReflectionBridge.isAvailable()) {
             throw new IllegalStateException(AbbaReflectionBridge.getFailureReason());

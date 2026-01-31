@@ -24,12 +24,28 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Runner for automatically excluding empty atlas regions.
+ * <p>
+ * This class orchestrates {@link AtlasManager#autoExcludeEmptyRegions(ImageData, List, Map, double)} across different scopes
+ * (current image, current project, or a batch of projects) and ensures results are persisted.
+ */
 public final class AutoExcludeEmptyRegionsRunner {
     private static final Logger logger = LoggerFactory.getLogger(AutoExcludeEmptyRegionsRunner.class);
 
     private AutoExcludeEmptyRegionsRunner() {
     }
 
+    /**
+     * Runs auto-exclusion on the image currently open in QuPath.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param channelNames the list of channel names to evaluate
+     * @param thresholds per-channel threshold values; if a channel maps to null, an automatic threshold is computed
+     * @param minCoverage minimum coverage in {@code [0,1]} required to keep a region
+     * @return the list of excluded regions for the current image
+     * @throws IllegalStateException if no image is open
+     */
     public static List<ExclusionReport> runCurrentImage(
             QuPathGUI qupath,
             List<String> channelNames,
@@ -71,6 +87,16 @@ public final class AutoExcludeEmptyRegionsRunner {
         return withContext;
     }
 
+    /**
+     * Runs auto-exclusion for every entry of the current QuPath project.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param channelNames the list of channel names to evaluate
+     * @param thresholds per-channel threshold values; if a channel maps to null, an automatic threshold is computed
+     * @param minCoverage minimum coverage in {@code [0,1]} required to keep a region
+     * @return a flattened list of excluded regions for all entries
+     * @throws IllegalStateException if no project is open
+     */
     public static List<ExclusionReport> runProject(
             QuPathGUI qupath,
             List<String> channelNames,
@@ -121,6 +147,17 @@ public final class AutoExcludeEmptyRegionsRunner {
         return allReports;
     }
 
+    /**
+     * Runs auto-exclusion for a list of QuPath projects.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param projectFiles list of QuPath project files (e.g. {@code project.qpproj})
+     * @param channelNames the list of channel names to evaluate
+     * @param thresholds per-channel threshold values; if a channel maps to null, an automatic threshold is computed
+     * @param minCoverage minimum coverage in {@code [0,1]} required to keep a region
+     * @return a flattened list of excluded regions for all entries across all projects
+     * @throws IllegalArgumentException if {@code projectFiles} is null or empty
+     */
     public static List<ExclusionReport> runBatch(
             QuPathGUI qupath,
             List<Path> projectFiles,
@@ -182,6 +219,13 @@ public final class AutoExcludeEmptyRegionsRunner {
         return allReports;
     }
 
+    /**
+     * Retrieves the excluded regions for every entry of the current QuPath project.
+     *
+     * @param qupath the QuPath GUI instance
+     * @return a flattened list of excluded regions for all entries
+     * @throws IllegalStateException if no project is open
+     */
     public static List<ExclusionReport> getExcludedRegionsCurrentProject(QuPathGUI qupath) {
         Project<BufferedImage> project = qupath.getProject();
         if (project == null) {

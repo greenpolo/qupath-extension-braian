@@ -37,6 +37,19 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Main execution runner for the BraiAn analysis pipeline.
+ * <p>
+ * This runner loads {@link ProjectsConfig} and orchestrates:
+ * <ul>
+ *   <li>optional channel renaming</li>
+ *   <li>cell detections per channel</li>
+ *   <li>per-channel object classification</li>
+ *   <li>optional overlaps computation</li>
+ *   <li>export of regional results via {@link AtlasManager}</li>
+ *   <li>optional pixel classification via {@link PixelClassifierRunner}</li>
+ * </ul>
+ */
 public final class BraiAnAnalysisRunner {
     private static final Logger logger = LoggerFactory.getLogger(BraiAnAnalysisRunner.class);
     private static final String CONFIG_FILENAME = "BraiAn.yml";
@@ -44,6 +57,12 @@ public final class BraiAnAnalysisRunner {
     private BraiAnAnalysisRunner() {
     }
 
+    /**
+     * Runs the pipeline for the currently open image, without exporting results.
+     *
+     * @param qupath the QuPath GUI instance
+     * @throws IllegalStateException if no project or no image is open
+     */
     public static void runPreview(QuPathGUI qupath) {
         Project<BufferedImage> project = qupath.getProject();
         if (project == null) {
@@ -57,6 +76,12 @@ public final class BraiAnAnalysisRunner {
         processImage(qupath, imageData, project, null, config, false);
     }
 
+    /**
+     * Runs the pipeline for all images in the current project and exports results.
+     *
+     * @param qupath the QuPath GUI instance
+     * @throws IllegalStateException if no project is open
+     */
     public static void runProject(QuPathGUI qupath) {
         Project<BufferedImage> project = qupath.getProject();
         if (project == null) {
@@ -66,6 +91,13 @@ public final class BraiAnAnalysisRunner {
         runProjectImages(qupath, project, config, true);
     }
 
+    /**
+     * Discovers QuPath projects under {@code rootPath} and runs the pipeline for each.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param rootPath root directory containing QuPath projects and a shared {@code BraiAn.yml}
+     * @throws IllegalArgumentException if {@code rootPath} is invalid
+     */
     public static void runBatch(QuPathGUI qupath, Path rootPath) {
         if (rootPath == null || !Files.isDirectory(rootPath)) {
             throw new IllegalArgumentException("Invalid projects directory: " + rootPath);
@@ -74,6 +106,15 @@ public final class BraiAnAnalysisRunner {
         runBatch(qupath, rootPath, projectFiles);
     }
 
+    /**
+     * Runs the pipeline for a list of QuPath projects.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param rootPath root directory containing a shared {@code BraiAn.yml}
+     * @param projectFiles list of QuPath project files (e.g. {@code project.qpproj})
+     * @throws IllegalArgumentException if {@code rootPath} is invalid
+     * @throws IllegalStateException if {@code projectFiles} is null or empty
+     */
     public static void runBatch(QuPathGUI qupath, Path rootPath, List<Path> projectFiles) {
         if (rootPath == null || !Files.isDirectory(rootPath)) {
             throw new IllegalArgumentException("Invalid projects directory: " + rootPath);
