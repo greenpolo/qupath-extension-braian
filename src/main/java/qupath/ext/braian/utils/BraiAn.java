@@ -15,7 +15,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
+/**
+ * Miscellaneous utilities used across the BraiAn extension.
+ */
 public class BraiAn {
+    /**
+     * Tries to resolve a file path following BraiAn conventions.
+     * <p>
+     * The search order is: project base directory, then its parent directory.
+     *
+     * @param project the current QuPath project
+     * @param fileName file name to locate
+     * @return an {@link Optional} containing the resolved path if present
+     */
     public static Optional<Path> resolvePathIfPresent(Project<?> project, String fileName) {
         if (project == null) {
             return Optional.empty();
@@ -40,6 +52,7 @@ public class BraiAn {
      * other QuPath projects of the
      * same experiment reside.
      * 
+     * @param project the current QuPath project
      * @param fileName the name of the file to search accordingly to BraiAn
      * @return the complete path to <code>fileName</code>.
      * @throws FileNotFoundException if no file named <code>fileName</code> was
@@ -50,6 +63,13 @@ public class BraiAn {
                 .orElseThrow(() -> new FileNotFoundException("Can't find the specified file: '" + fileName + "'"));
     }
 
+    /**
+     * Adds {@link PathClass} values to the project and refreshes the QuPath GUI list.
+     *
+     * @param project the current project
+     * @param qupath the QuPath GUI instance; may be null
+     * @param toAdd classes to add
+     */
     public static void populatePathClassGUI(Project<?> project, QuPathGUI qupath, PathClass... toAdd) {
         if (project == null || toAdd == null || toAdd.length == 0) {
             return;
@@ -68,6 +88,13 @@ public class BraiAn {
         }
     }
 
+    /**
+     * Joins a collection into a string.
+     *
+     * @param c the collection to join
+     * @param delimiter delimiter to insert between elements
+     * @return the joined string
+     */
     public static <T> String join(Collection<T> c, String delimiter) {
         if (c.isEmpty())
             return "";

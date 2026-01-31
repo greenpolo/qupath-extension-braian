@@ -13,6 +13,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
+/**
+ * Utilities for discovering QuPath project files on disk.
+ */
 public final class ProjectDiscoveryService {
     private ProjectDiscoveryService() {
     }
@@ -22,6 +25,9 @@ public final class ProjectDiscoveryService {
      *
      * <p>Discovery rule: include {@code <subdir>/project.<ext>} where {@code <ext>} is
      * {@link ProjectIO#DEFAULT_PROJECT_EXTENSION}.
+     *
+     * @param rootPath root directory to search
+     * @return list of discovered project files, sorted by directory name
      */
     public static List<Path> discoverProjectFiles(Path rootPath) {
         if (rootPath == null || !Files.isDirectory(rootPath)) {
