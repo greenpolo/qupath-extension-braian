@@ -99,6 +99,29 @@ public class ChannelHistogram {
     }
 
     /**
+     * Computes the fraction of pixels at or above a given intensity threshold.
+     *
+     * @param threshold intensity value (0-255 for 8-bit, 0-65535 for 16-bit)
+     * @return coverage as a value between 0.0 and 1.0
+     */
+    public double getCoverageAbove(int threshold) {
+        long total = 0;
+        for (long v : values) {
+            total += v;
+        }
+        if (total <= 0) {
+            return 0.0;
+        }
+
+        int start = Math.max(0, Math.min(threshold, values.length));
+        long above = 0;
+        for (int i = start; i < values.length; i++) {
+            above += values[i];
+        }
+        return (double) above / (double) total;
+    }
+
+    /**
      * Smooths the ChannelHistogram and find the color values that appear the most.
      * <p>
      * It applies {@link #findHistogramPeaks(int, double)} with <code>windowSize=15</code>

@@ -9,12 +9,20 @@ import qupath.lib.common.GeneralTools;
 import qupath.lib.gui.measure.ObservableMeasurementTableData;
 import qupath.lib.images.servers.PixelCalibration;
 import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.ImageServer;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjectTools;
+import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import qupath.lib.projects.ProjectImageEntry;
+import qupath.lib.regions.RegionRequest;
+
+import ij.ImagePlus;
+import ij.process.ImageProcessor;
+import ij.gui.Roi;
+import qupath.imagej.tools.IJTools;
 
 import ij.measure.ResultsTable;
 import java.awt.image.BufferedImage;
@@ -27,6 +35,7 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.UUID;
 
 import static qupath.ext.braian.BraiAnExtension.getLogger;
 
@@ -128,6 +137,11 @@ public class AtlasManager {
 
     private final PathObject atlasObject;
     private final PathObjectHierarchy hierarchy;
+
+    private static final int AUTO_THRESHOLD_RESOLUTION_LEVEL = 4;
+    private static final int AUTO_THRESHOLD_SMOOTH_WINDOW_SIZE = 15;
+    private static final double AUTO_THRESHOLD_PEAK_PROMINENCE = 100.0;
+    private static final int AUTO_THRESHOLD_N_PEAK = 0;
 
     /**
      * Constructs a manager of the specified atlas imported with ABBA.
@@ -495,6 +509,180 @@ public class AtlasManager {
                 .forEach(
                         mistakenlyExcludedRegion -> this.fixMistakenlyExcludedRegion(mistakenlyExcludedRegion,
                                 this.isSplit()));
+    }
+
+    /**
+     * Automatically excludes atlas regions that appear empty across all specified channels.
+     *
+     * <p>A region is excluded if the fraction of pixels at or above the (auto or manual) threshold
+     * is below {@code minCoverage} for <b>every</b> channel.
+     *
+     * <p>Exclusion is done by creating a duplicate annotation outside the atlas hierarchy and
+     * classifying it as {@link #EXCLUDE_CLASSIFICATION}.
+     */
+    public List<ExclusionReport> autoExcludeEmptyRegions(
+            ImageData<BufferedImage> imageData,
+            List<String> channelNames,
+            Map<String, Integer> thresholds,
+            double minCoverage
+    ) {
+        Objects.requireNonNull(imageData, "imageData");
+        Objects.requireNonNull(channelNames, "channelNames");
+        Objects.requireNonNull(thresholds, "thresholds");
+
+        if (minCoverage < 0.0 || minCoverage > 1.0) {
+            throw new IllegalArgumentException("minCoverage must be between 0.0 and 1.0");
+        }
+        if (channelNames.isEmpty()) {
+            return List.of();
+        }
+
+        // Avoid creating duplicate exclusions for regions already excluded
+        Set<PathObject> alreadyExcluded = getExcludedBrainRegions();
+
+        List<ExclusionReport> reports = new ArrayList<>();
+        for (PathObject region : flatten()) {
+            if (!(region instanceof PathAnnotationObject annotation)) {
+                continue;
+            }
+            if (region == this.atlasObject) {
+                continue;
+            }
+            String name = annotation.getName();
+            if (name != null && ("Root".equals(name) || "root".equals(name))) {
+                continue;
+            }
+            if (alreadyExcluded.contains(region)) {
+                continue;
+            }
+            var roi = annotation.getROI();
+            if (roi == null || !roi.isArea() || roi.getArea() <= 0) {
+                continue;
+            }
+
+            double maxCoverage = 0.0;
+            boolean allBelow = true;
+            for (String channelName : channelNames) {
+                Integer threshold = thresholds.get(channelName);
+                double coverage;
+                try {
+                    ChannelHistogram hist = buildRegionHistogram(imageData, annotation, channelName,
+                            AUTO_THRESHOLD_RESOLUTION_LEVEL);
+                    int resolvedThreshold = threshold != null
+                            ? threshold
+                            : autoThresholdFromHistogram(hist, AUTO_THRESHOLD_SMOOTH_WINDOW_SIZE,
+                                    AUTO_THRESHOLD_PEAK_PROMINENCE, AUTO_THRESHOLD_N_PEAK);
+                    coverage = hist.getCoverageAbove(resolvedThreshold);
+                } catch (Exception e) {
+                    // Conservative fallback: if we can't measure coverage, do not auto-exclude.
+                    getLogger().warn("Failed to compute coverage for region '{}' channel '{}': {}",
+                            annotation.getName(), channelName, e.getMessage());
+                    coverage = 1.0;
+                }
+
+                maxCoverage = Math.max(maxCoverage, coverage);
+                if (coverage >= minCoverage) {
+                    allBelow = false;
+                }
+            }
+
+            if (!allBelow) {
+                continue;
+            }
+
+            PathAnnotationObject exclude = (PathAnnotationObject) PathObjects.createAnnotationObject(annotation.getROI());
+            exclude.setName(annotation.getName());
+            exclude.setPathClass(EXCLUDE_CLASSIFICATION);
+            this.hierarchy.addObject(exclude);
+
+            reports.add(new ExclusionReport(
+                    null,
+                    null,
+                    imageData.getServerMetadata().getName(),
+                    exclude.getID(),
+                    annotation.getName(),
+                    maxCoverage
+            ));
+        }
+        return reports;
+    }
+
+    /**
+     * Gets currently excluded annotations (classified as {@link #EXCLUDE_CLASSIFICATION}).
+     */
+    public List<ExclusionReport> getExcludedRegions(ImageData<BufferedImage> imageData) {
+        Objects.requireNonNull(imageData, "imageData");
+        String imageName = imageData.getServerMetadata().getName();
+        return getExclusionAnnotations(this.hierarchy).stream()
+                .filter(o -> o instanceof PathAnnotationObject)
+                .map(o -> (PathAnnotationObject) o)
+                .map(ann -> new ExclusionReport(
+                        null,
+                        null,
+                        imageName,
+                        ann.getID(),
+                        ann.getName(),
+                        Double.NaN
+                ))
+                .toList();
+    }
+
+    private static ChannelHistogram buildRegionHistogram(
+            ImageData<BufferedImage> imageData,
+            PathAnnotationObject region,
+            String channelName,
+            int resolutionLevel
+    ) throws IOException {
+        Objects.requireNonNull(imageData, "imageData");
+        Objects.requireNonNull(region, "region");
+        Objects.requireNonNull(channelName, "channelName");
+
+        ImageServer<BufferedImage> server = imageData.getServer();
+        ImageChannelTools channel = new ImageChannelTools(channelName, imageData);
+        double downsample = server.getDownsampleForResolution(Math.min(server.nResolutions() - 1, resolutionLevel));
+        RegionRequest request = RegionRequest.createInstance(server.getPath(), downsample, region.getROI());
+
+        var pathImage = IJTools.convertToImagePlus(server, request);
+        ImagePlus imp = pathImage.getImage();
+
+        int ijChannel = channel.getnChannel() + 1; // ImageJ channels are 1-based
+        imp.setC(ijChannel);
+
+        ImageProcessor ip = imp.getChannelProcessor().duplicate();
+        Roi ijRoi = IJTools.convertToIJRoi(region.getROI(), request);
+        if (ijRoi != null) {
+            ip.setRoi(ijRoi);
+        }
+        return new ChannelHistogram(channelName, ip);
+    }
+
+    private static int autoThresholdFromHistogram(
+            ChannelHistogram histogram,
+            int windowSize,
+            double prominence,
+            int nthPeak
+    ) {
+        int[] peaks = histogram.findHistogramPeaks(windowSize, prominence);
+        int max = histogram.getMaxValue() - windowSize;
+        int firstValid = -1;
+        for (int i = 0; i < peaks.length; i++) {
+            if (peaks[i] >= windowSize && peaks[i] < max) {
+                firstValid = i;
+                break;
+            }
+        }
+        String msg = "Could not automatically determine the channel threshold of '" + histogram.getChannelName() + "' from its histogram!";
+        if (firstValid < 0) {
+            throw new RuntimeException(msg + " No peak was found within the trust-worthy interval");
+        }
+        int shiftedNth = nthPeak + firstValid;
+        if (peaks.length <= shiftedNth) {
+            throw new RuntimeException(msg + " The histogram doesn't have n peaks in [windowSize:end]");
+        }
+        if (peaks[shiftedNth] >= max) {
+            throw new RuntimeException(msg + " There is at least one valid peak, but not n valid peaks");
+        }
+        return peaks[shiftedNth];
     }
 
     private void fixMistakenlyExcludedRegion(PathObject mistakenlyExcludedRegion, boolean isSplit) {
