@@ -8,14 +8,13 @@ import org.controlsfx.control.action.Action;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.braian.gui.BraiAnDetectDialog;
+import qupath.ext.braian.gui.ExclusionReviewDialog;
+import qupath.ext.braian.runners.AutoExcludeEmptyRegionsRunner;
 import qupath.lib.common.Version;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.gui.actions.ActionTools;
 import qupath.lib.gui.extensions.QuPathExtension;
 import qupath.lib.gui.tools.MenuTools;
-import qupath.lib.images.ImageData;
-import qupath.lib.objects.PathObject;
-import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 
 import java.io.*;
 import java.net.URLDecoder;
@@ -71,18 +70,12 @@ public class BraiAnExtension implements QuPathExtension {
 
         var showExclusions = ActionTools.createAction(
                 () -> {
-                    ImageData<?> imageData = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
-                    if (imageData == null) {
-                        logger.error("No image is currently open!");
+                    if (qupath.getProject() == null) {
+                        logger.error("No project is currently open!");
                         return;
                     }
-                    PathObjectHierarchy hierarchy = imageData.getHierarchy();
-                    AtlasManager atlas = new AtlasManager(hierarchy);
-                    Set<PathObject> regionsToExcludeSet = atlas.getExcludedBrainRegions();
-                    hierarchy.getSelectionModel().clearSelection();
-                    if (!regionsToExcludeSet.isEmpty()) {
-                        hierarchy.getSelectionModel().setSelectedObjects(regionsToExcludeSet, null);
-                    }
+                    var reports = AutoExcludeEmptyRegionsRunner.getExcludedRegionsCurrentProject(qupath);
+                    new ExclusionReviewDialog(qupath, reports).show();
                 },
                 "Show regions currently excluded");
         MenuTools.addMenuItems(

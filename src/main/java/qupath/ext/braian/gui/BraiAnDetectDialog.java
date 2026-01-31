@@ -16,9 +16,12 @@ import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.Spinner;
+import javafx.scene.control.SpinnerValueFactory;
 import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
@@ -36,8 +39,10 @@ import javafx.stage.Window;
 import javafx.util.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import qupath.ext.braian.ExclusionReport;
 import qupath.ext.braian.config.ProjectsConfig;
 import qupath.ext.braian.runners.ABBAImporterRunner;
+import qupath.ext.braian.runners.AutoExcludeEmptyRegionsRunner;
 import qupath.ext.braian.runners.BraiAnAnalysisRunner;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.ext.braian.utils.ProjectDiscoveryService;
@@ -254,8 +259,118 @@ public class BraiAnDetectDialog {
                 "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
         warningLabel.getStyleClass().add("warning");
 
-        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importButton, warningLabel);
+        VBox autoExcludePanel = buildAutoExcludePanel(currentImageToggle, currentProjectToggle, experimentToggle);
+
+        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importButton, warningLabel, autoExcludePanel);
         return new Tab("Project Preparation", container);
+    }
+
+    private VBox buildAutoExcludePanel(RadioButton currentImageToggle, RadioButton currentProjectToggle, RadioButton experimentToggle) {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(12));
+        panel.setStyle("-fx-border-color: -fx-box-border; -fx-border-radius: 6; -fx-background-radius: 6; -fx-background-color: -fx-control-inner-background;");
+
+        Label title = new Label("Auto-Exclude Empty Regions");
+        title.setStyle("-fx-font-weight: bold;");
+
+        List<String> channelOptions = new ArrayList<>();
+        if (!availableImageChannels.isEmpty()) {
+            channelOptions.addAll(availableImageChannels);
+        } else {
+            channelOptions.addAll(List.of("Red", "Green", "Blue"));
+        }
+
+        HBox channelsRow = new HBox(10);
+        channelsRow.setAlignment(Pos.CENTER_LEFT);
+        channelsRow.getChildren().add(new Label("Channels:"));
+        List<CheckBox> channelChecks = new ArrayList<>();
+        for (String ch : channelOptions) {
+            CheckBox cb = new CheckBox(ch);
+            cb.setSelected(true);
+            channelChecks.add(cb);
+            channelsRow.getChildren().add(cb);
+        }
+
+        ToggleGroup thresholdModeGroup = new ToggleGroup();
+        RadioButton autoMode = new RadioButton("Auto");
+        RadioButton manualMode = new RadioButton("Manual");
+        autoMode.setToggleGroup(thresholdModeGroup);
+        manualMode.setToggleGroup(thresholdModeGroup);
+        autoMode.setSelected(true);
+
+        Spinner<Integer> manualThresholdSpinner = new Spinner<>();
+        manualThresholdSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 65535, 10));
+        manualThresholdSpinner.setEditable(true);
+        manualThresholdSpinner.disableProperty().bind(manualMode.selectedProperty().not());
+
+        HBox thresholdRow = new HBox(10,
+                new Label("Threshold Mode:"),
+                autoMode,
+                manualMode,
+                new Label("Value:"),
+                manualThresholdSpinner);
+        thresholdRow.setAlignment(Pos.CENTER_LEFT);
+
+        Spinner<Integer> minCoverageSpinner = new Spinner<>();
+        minCoverageSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 100, 5));
+        minCoverageSpinner.setEditable(true);
+
+        HBox coverageRow = new HBox(10, new Label("Min Coverage:"), minCoverageSpinner, new Label("%"));
+        coverageRow.setAlignment(Pos.CENTER_LEFT);
+
+        Button runButton = new Button("Run Auto-Exclusion");
+        runButton.disableProperty().bind(running);
+        runButton.setOnAction(e -> {
+            List<String> selectedChannels = channelChecks.stream()
+                    .filter(CheckBox::isSelected)
+                    .map(CheckBox::getText)
+                    .toList();
+            if (selectedChannels.isEmpty()) {
+                Dialogs.showErrorMessage("Auto-Exclude", "Select at least one channel.");
+                return;
+            }
+
+            boolean isAuto = autoMode.isSelected();
+            int manualThreshold = manualThresholdSpinner.getValue();
+            Map<String, Integer> thresholds = new HashMap<>();
+            for (String ch : selectedChannels) {
+                thresholds.put(ch, isAuto ? null : manualThreshold);
+            }
+            double minCoverage = minCoverageSpinner.getValue() / 100.0;
+
+            final List<Path> selectedProjectsForExperiment;
+            if (experimentToggle.isSelected()) {
+                Path rootPath = resolveImportBatchRoot();
+                if (rootPath == null) {
+                    Dialogs.showErrorMessage("Auto-Exclude",
+                            "Select a projects folder before running auto-exclusion for an experiment.");
+                    return;
+                }
+                selectedProjectsForExperiment = getSelectedProjectFiles();
+                if (selectedProjectsForExperiment.isEmpty()) {
+                    Dialogs.showErrorMessage("Auto-Exclude", "Select at least one project.");
+                    return;
+                }
+            } else {
+                selectedProjectsForExperiment = List.of();
+            }
+
+            runAsync("Auto-Exclude Empty Regions", () -> {
+                List<ExclusionReport> reports;
+                if (currentImageToggle.isSelected()) {
+                    reports = AutoExcludeEmptyRegionsRunner.runCurrentImage(qupath, selectedChannels, thresholds, minCoverage);
+                } else if (currentProjectToggle.isSelected()) {
+                    reports = AutoExcludeEmptyRegionsRunner.runProject(qupath, selectedChannels, thresholds, minCoverage);
+                } else {
+                    reports = AutoExcludeEmptyRegionsRunner.runBatch(qupath, selectedProjectsForExperiment, selectedChannels, thresholds, minCoverage);
+                }
+
+                Platform.runLater(() -> new ExclusionReviewDialog(qupath, reports).show());
+            });
+        });
+
+        panel.getChildren().addAll(title, channelsRow, thresholdRow, coverageRow, runButton);
+        return panel;
     }
 
     private Tab buildExperimentTab() {
