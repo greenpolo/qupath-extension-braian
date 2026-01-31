@@ -63,9 +63,10 @@ public class ProjectsConfig {
             Constructor c = new Constructor(ProjectsConfig.class, new LoaderOptions());
             return new Yaml(c).load(configStream);
         } catch (YAMLException e) {
-            getLogger().error("Could not interpret the file '{}'. Please check that it is correctly formatted!",
-                    filePath);
-            throw e;
+            String message = "Could not interpret " + filePath.getFileName()
+                    + ". The format may be outdated. Please DELETE or RENAME this file to allow it to be regenerated.";
+            getLogger().error(message, e);
+            throw new YAMLException(message, e);
         }
     }
 
