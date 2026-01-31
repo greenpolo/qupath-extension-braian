@@ -36,6 +36,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+/**
+ * Main pane used to configure and run the BraiAn analysis pipeline.
+ * <p>
+ * This component is responsible for editing {@link ProjectsConfig}, including global settings,
+ * per-channel parameters, and execution controls.
+ */
 public class ExperimentPane extends VBox {
     private final ObservableList<String> channelNames;
     private final List<String> availableImageChannels;
@@ -63,6 +69,23 @@ public class ExperimentPane extends VBox {
     private static final String HELP_URL_CROSS_CHANNEL =
             "https://silvalab.codeberg.page/BraiAn/image-analysis/#:~:text=Find%20co%2Dlabelled%20detections";
 
+    /**
+     * Creates the experiment pane.
+     *
+     * @param config the initial configuration
+     * @param channelNames observable list of available channel names
+     * @param availableImageChannels available image channel names from the current image
+     * @param owner owning stage used for dialogs
+     * @param batchMode whether the analysis runs in batch mode
+     * @param batchReady whether batch mode has a valid project selection
+     * @param running indicates whether the pipeline is currently running
+     * @param onPreview callback to run a preview on the current image
+     * @param onRun callback to run the pipeline
+     * @param onConfigChanged callback invoked when configuration is changed
+     * @param configRootSupplier supplier for the directory containing configuration resources
+     * @param projectDirSupplier supplier for the current project directory
+     * @param imageDataSupplier supplier for the current {@link ImageData}
+     */
     public ExperimentPane(ProjectsConfig config,
             ObservableList<String> channelNames,
             List<String> availableImageChannels,
@@ -107,6 +130,11 @@ public class ExperimentPane extends VBox {
         refreshFromConfig();
     }
 
+    /**
+     * Replaces the underlying configuration object and refreshes the UI.
+     *
+     * @param config the new configuration
+     */
     public void setConfig(ProjectsConfig config) {
         this.config = config;
         ensureChannelListMutable();
@@ -332,6 +360,9 @@ public class ExperimentPane extends VBox {
         }
     }
 
+    /**
+     * Tries to detect the atlas name from the current image hierarchy and updates the configuration.
+     */
     public void autoDetectAtlas() {
         ImageData<?> imageData = imageDataSupplier.get();
         if (imageData == null) {

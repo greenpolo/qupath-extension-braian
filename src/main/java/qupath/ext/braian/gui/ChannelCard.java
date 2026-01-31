@@ -49,6 +49,12 @@ import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
+/**
+ * UI component representing a single channel configuration.
+ * <p>
+ * This card binds controls to a {@link ChannelDetectionsConfig} and emits callbacks when the
+ * configuration changes.
+ */
 public class ChannelCard extends VBox {
     private final ChannelDetectionsConfig config;
     private final WatershedCellDetectionConfig params;
@@ -113,6 +119,18 @@ public class ChannelCard extends VBox {
     private static final String BADGE_PARTIAL_STYLE =
             "-fx-background-color: #E8F0FE; -fx-text-fill: #1A73E8; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
 
+    /**
+     * Creates a channel card.
+     *
+     * @param config the per-channel configuration to edit
+     * @param availableChannels list of channel names that can be selected
+     * @param owner owning stage used for dialogs
+     * @param configRootSupplier supplier for the directory containing configuration resources
+     * @param projectDirSupplier supplier for the current project directory
+     * @param onConfigChanged callback invoked when configuration is changed
+     * @param onChannelNameChanged callback invoked when the channel name is changed
+     * @param isUpdatingSupplier supplier indicating whether UI is being updated programmatically
+     */
     public ChannelCard(ChannelDetectionsConfig config,
                        List<String> availableChannels,
                        Stage owner,
@@ -296,6 +314,11 @@ public class ChannelCard extends VBox {
         getChildren().addAll(header, enableCellDetection, cellDetectionSection, enablePixelClassification, pixelClassifierPane);
     }
 
+    /**
+     * Sets the callback invoked when the user clicks the remove button.
+     *
+     * @param onRemove callback invoked when removing the channel; if null a no-op is used
+     */
     public void setOnRemove(Runnable onRemove) {
         this.onRemove = Objects.requireNonNullElse(onRemove, () -> {});
     }

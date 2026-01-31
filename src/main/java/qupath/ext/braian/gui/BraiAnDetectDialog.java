@@ -67,6 +67,15 @@ import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Main JavaFX dialog for the BraiAn pipeline manager.
+ * <p>
+ * This dialog provides:
+ * <ul>
+ *   <li>Project preparation (ABBA atlas import, auto-exclude empty regions)</li>
+ *   <li>Detection and analysis configuration and execution</li>
+ * </ul>
+ */
 public class BraiAnDetectDialog {
     private static final Logger logger = LoggerFactory.getLogger(BraiAnDetectDialog.class);
     private static final String CONFIG_FILENAME = "BraiAn.yml";
@@ -119,11 +128,20 @@ public class BraiAnDetectDialog {
         }
     }
 
+    /**
+     * Defines which tab should be selected when the dialog opens.
+     */
     public enum InitialTab {
         IMPORT,
         DETECTION
     }
 
+    /**
+     * Creates the dialog.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param initialTab which tab should be selected when the dialog opens
+     */
     public BraiAnDetectDialog(QuPathGUI qupath, InitialTab initialTab) {
         this.qupath = qupath;
         this.stage = new Stage();
@@ -149,10 +167,18 @@ public class BraiAnDetectDialog {
         this.stage.setScene(new Scene(buildRoot(initialTab)));
     }
 
+    /**
+     * Sets a callback invoked when the dialog is closed.
+     *
+     * @param onClose callback invoked on close; may be null
+     */
     public void setOnClose(Runnable onClose) {
         this.onClose = onClose;
     }
 
+    /**
+     * Shows the dialog.
+     */
     public void show() {
         this.stage.show();
         this.stage.toFront();

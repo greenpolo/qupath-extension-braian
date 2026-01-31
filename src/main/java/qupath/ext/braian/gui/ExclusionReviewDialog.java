@@ -45,6 +45,12 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+/**
+ * Dialog for reviewing excluded regions across project entries.
+ * <p>
+ * This dialog displays a table of {@link ExclusionReport} items, allows navigation to an excluded annotation,
+ * and supports restoring regions by removing the corresponding {@link AtlasManager#EXCLUDE_CLASSIFICATION} annotation.
+ */
 public class ExclusionReviewDialog extends Stage {
     private static final Logger logger = LoggerFactory.getLogger(ExclusionReviewDialog.class);
     private static final DecimalFormat PCT = new DecimalFormat("0.00");
@@ -54,6 +60,12 @@ public class ExclusionReviewDialog extends Stage {
     private final ObservableList<ExclusionReport> reports;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
+    /**
+     * Creates a new review dialog.
+     *
+     * @param qupath the QuPath GUI instance
+     * @param reports the exclusion reports to display
+     */
     public ExclusionReviewDialog(QuPathGUI qupath, List<ExclusionReport> reports) {
         this.qupath = qupath;
         this.reports = FXCollections.observableArrayList(reports);
