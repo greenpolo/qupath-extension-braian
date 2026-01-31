@@ -30,6 +30,11 @@ import java.util.*;
  * interface
  */
 public class ChannelDetections extends AbstractDetections {
+    /**
+     * Name used for the implicit full-image container annotation.
+     *
+     * @see #getFullImageDetectionAnnotation(ImageData, PathObjectHierarchy)
+     */
     public static final String FULL_IMAGE_DETECTIONS_NAME = "AllDetections";
 
     /**
@@ -59,6 +64,12 @@ public class ChannelDetections extends AbstractDetections {
         }
     }
 
+    /**
+     * Creates the {@link PathClass} used to classify detections for a channel.
+     *
+     * @param channelName the channel name
+     * @return a {@link PathClass} that matches {@code channelName}
+     */
     public static PathClass createClassification(String channelName) {
         return PathClass.fromString(channelName);
     }
@@ -245,6 +256,9 @@ public class ChannelDetections extends AbstractDetections {
         }
     }
 
+    /**
+     * @return the name used for the container annotation storing cell detections
+     */
     @Override
     public String getContainersName() {
         return this.getId() + " cells";

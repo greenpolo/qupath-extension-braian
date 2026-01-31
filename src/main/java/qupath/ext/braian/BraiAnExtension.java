@@ -23,6 +23,11 @@ import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
+/**
+ * Entry point for the BraiAn QuPath extension.
+ * <p>
+ * This class registers menu items and bundled scripts in the QuPath GUI.
+ */
 public class BraiAnExtension implements QuPathExtension {
 
     private static final String menuPosition = "Extensions>BraiAn";
@@ -158,6 +163,9 @@ public class BraiAnExtension implements QuPathExtension {
         return "A collection of tools for whole-brain data quantification and extraction";
     }
 
+    /**
+     * @return the minimum QuPath version required by this extension
+     */
     @Override
     public Version getQuPathVersion() {
         return Version.parse("0.6.0");

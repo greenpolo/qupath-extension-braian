@@ -65,9 +65,24 @@ class ExclusionMistakeException extends RuntimeException {
  * works closely with ABBA's QuPath extension.
  */
 public class AtlasManager {
+    /**
+     * Micrometer symbol used for exported measurements.
+     */
     public final static String um = GeneralTools.micrometerSymbol();
+
+    /**
+     * {@link PathClass} used to mark regions/annotations that must be excluded from downstream analysis.
+     */
     public final static PathClass EXCLUDE_CLASSIFICATION = PathClass.fromString("Exclude");
+
+    /**
+     * {@link PathClass} used to tag regions originating from the left hemisphere in ABBA atlases.
+     */
     public final static PathClass ABBA_LEFT = PathClass.fromString("Left");
+
+    /**
+     * {@link PathClass} used to tag regions originating from the right hemisphere in ABBA atlases.
+     */
     public final static PathClass ABBA_RIGHT = PathClass.fromString("Right");
 
     /**
