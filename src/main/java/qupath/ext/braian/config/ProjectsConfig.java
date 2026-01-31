@@ -39,6 +39,7 @@ public class ProjectsConfig {
     /**
      * Reads a BraiAn configuration file
      * 
+     * @param project the current QuPath project
      * @param yamlFileName the name of the file, not the path.
      *                     It will then search it first into the project's directory
      *                     and, if it wasn't there, in its parent directory.
@@ -55,6 +56,15 @@ public class ProjectsConfig {
         return read(filePath);
     }
 
+    /**
+     * Reads a BraiAn configuration file from a full path.
+     *
+     * @param filePath the path to the YAML configuration file
+     * @return an instance of {@link ProjectsConfig}
+     * @throws IOException if it found the config file, but it had problems while reading it
+     * @throws YAMLException if it found and read the config file, but it was badly formatted
+     * @see #read(Project, String)
+     */
     public static ProjectsConfig read(Path filePath) throws IOException, YAMLException {
         getLogger().info("using '{}' configuration file.", filePath);
         String configStream = Files.readString(filePath, StandardCharsets.UTF_8);
@@ -70,6 +80,12 @@ public class ProjectsConfig {
         }
     }
 
+    /**
+     * Serializes a {@link ProjectsConfig} instance as YAML.
+     *
+     * @param config the configuration to serialize
+     * @return a YAML representation of the configuration
+     */
     public static String toYaml(ProjectsConfig config) {
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
@@ -102,10 +118,16 @@ public class ProjectsConfig {
     private DetectionsCheckConfig detectionsCheck = new DetectionsCheckConfig();
     private List<ChannelDetectionsConfig> channelDetections = List.of();
 
+    /**
+     * @return the {@link qupath.lib.objects.classes.PathClass} name used to select annotations for running detections
+     */
     public String getClassForDetections() {
         return classForDetections;
     }
 
+    /**
+     * @param classForDetections the {@link qupath.lib.objects.classes.PathClass} name used to select annotations for running detections
+     */
     public void setClassForDetections(String classForDetections) {
         this.classForDetections = classForDetections;
     }
@@ -133,18 +155,30 @@ public class ProjectsConfig {
                 .toList();
     }
 
+    /**
+     * @return the ABBA atlas identifier used during atlas import
+     */
     public String getAtlasName() {
         return atlasName;
     }
 
+    /**
+     * @param atlasName the ABBA atlas identifier used during atlas import
+     */
     public void setAtlasName(String atlasName) {
         this.atlasName = atlasName;
     }
 
+    /**
+     * @return configuration for overlap checks across channels
+     */
     public DetectionsCheckConfig getDetectionsCheck() {
         return detectionsCheck;
     }
 
+    /**
+     * @param detectionsCheck configuration for overlap checks across channels
+     */
     public void setDetectionsCheck(DetectionsCheckConfig detectionsCheck) {
         this.detectionsCheck = detectionsCheck;
     }
@@ -167,10 +201,16 @@ public class ProjectsConfig {
         return Optional.of(name);
     }
 
+    /**
+     * @return the per-channel configurations
+     */
     public List<ChannelDetectionsConfig> getChannelDetections() {
         return channelDetections;
     }
 
+    /**
+     * @param channelDetections the per-channel configurations
+     */
     public void setChannelDetections(List<ChannelDetectionsConfig> channelDetections) {
         this.channelDetections = channelDetections;
     }
