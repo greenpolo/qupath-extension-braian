@@ -29,6 +29,7 @@ import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleGroup;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -69,12 +70,6 @@ import java.util.concurrent.Executors;
 
 /**
  * Main JavaFX dialog for the BraiAn pipeline manager.
- * <p>
- * This dialog provides:
- * <ul>
- * <li>Project preparation (ABBA atlas import, auto-exclude empty regions)</li>
- * <li>Detection and analysis configuration and execution</li>
- * </ul>
  */
 public class BraiAnDetectDialog {
     private static final Logger logger = LoggerFactory.getLogger(BraiAnDetectDialog.class);
@@ -128,20 +123,11 @@ public class BraiAnDetectDialog {
         }
     }
 
-    /**
-     * Defines which tab should be selected when the dialog opens.
-     */
     public enum InitialTab {
         IMPORT,
         DETECTION
     }
 
-    /**
-     * Creates the dialog.
-     *
-     * @param qupath     the QuPath GUI instance
-     * @param initialTab which tab should be selected when the dialog opens
-     */
     public BraiAnDetectDialog(QuPathGUI qupath, InitialTab initialTab) {
         this.qupath = qupath;
         this.stage = new Stage();
@@ -159,26 +145,16 @@ public class BraiAnDetectDialog {
 
         initializeConfig();
 
-        // Update context if the project changes while the dialog is open
         qupath.projectProperty().addListener((obs, oldValue, newValue) -> {
             Platform.runLater(this::updateConfigForContext);
         });
-        // We do not rebuild root on project change anymore to avoid resetting tab state
         this.stage.setScene(new Scene(buildRoot(initialTab)));
     }
 
-    /**
-     * Sets a callback invoked when the dialog is closed.
-     *
-     * @param onClose callback invoked on close; may be null
-     */
     public void setOnClose(Runnable onClose) {
         this.onClose = onClose;
     }
 
-    /**
-     * Shows the dialog.
-     */
     public void show() {
         this.stage.show();
         this.stage.toFront();
@@ -267,7 +243,16 @@ public class BraiAnDetectDialog {
         batchChooserRow.managedProperty().bind(importBatchMode);
         batchChooserRow.visibleProperty().bind(importBatchMode);
 
+        VBox importAtlasPanel = new VBox(10);
+        importAtlasPanel.setPadding(new Insets(12));
+        importAtlasPanel.setStyle(
+                "-fx-border-color: -fx-box-border; -fx-border-radius: 6; -fx-background-radius: 6; -fx-background-color: -fx-control-inner-background;");
+
+        Label importTitle = new Label("Import Atlas");
+        importTitle.setStyle("-fx-font-weight: bold;");
+
         Button importButton = new Button("Import Atlas");
+        importButton.setTooltip(new Tooltip("Imports atlas regions into the hierarchy."));
         importButton.disableProperty().bind(running);
         importButton.setOnAction(event -> {
             if (currentImageToggle.isSelected()) {
@@ -279,16 +264,17 @@ public class BraiAnDetectDialog {
             }
         });
 
-        VBox projectListPanel = buildProjectListPanel(importBatchMode);
-
         Label warningLabel = new Label(
                 "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
         warningLabel.getStyleClass().add("warning");
 
+        importAtlasPanel.getChildren().addAll(importTitle, importButton, warningLabel);
+
+        VBox projectListPanel = buildProjectListPanel(importBatchMode);
+
         VBox autoExcludePanel = buildAutoExcludePanel(currentImageToggle, currentProjectToggle, experimentToggle);
 
-        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importButton, warningLabel,
-                autoExcludePanel);
+        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importAtlasPanel, autoExcludePanel);
         return new Tab("Project Preparation", container);
     }
 
@@ -302,65 +288,73 @@ public class BraiAnDetectDialog {
         Label title = new Label("Auto-Exclude Empty Regions");
         title.setStyle("-fx-font-weight: bold;");
 
+        ComboBox<String> channelModeSelector = new ComboBox<>(
+                FXCollections.observableArrayList("Nuclei Only", "All Channels (Max)"));
+        channelModeSelector.setValue("Nuclei Only");
+        channelModeSelector.setMaxWidth(Double.MAX_VALUE);
+        channelModeSelector.setTooltip(new Tooltip(
+                "Nuclei Only: Use only the selected nuclei channel.\nAll Channels (Max): Use the brightest value across all channels."));
+        HBox modeRow = new HBox(10, new Label("Channel Mode:"), channelModeSelector);
+        modeRow.setAlignment(Pos.CENTER_LEFT);
+
         List<String> channelOptions = new ArrayList<>();
         if (!availableImageChannels.isEmpty()) {
             channelOptions.addAll(availableImageChannels);
         } else {
             channelOptions.addAll(List.of("Red", "Green", "Blue"));
         }
-
         ComboBox<String> channelSelector = new ComboBox<>(FXCollections.observableArrayList(channelOptions));
         channelSelector.setPromptText("Select nuclei channel");
         channelSelector.setMaxWidth(Double.MAX_VALUE);
+        channelSelector.setTooltip(new Tooltip("Select the channel used for nuclei staining (e.g., DAPI)."));
         if (channelOptions.size() == 1) {
             channelSelector.setValue(channelOptions.get(0));
         }
-        HBox channelsRow = new HBox(10, new Label("Nuclei channel:"), channelSelector);
-        channelsRow.setAlignment(Pos.CENTER_LEFT);
+        HBox nucleiRow = new HBox(10, new Label("Nuclei channel:"), channelSelector);
+        nucleiRow.setAlignment(Pos.CENTER_LEFT);
+        nucleiRow.visibleProperty().bind(channelModeSelector.valueProperty().isEqualTo("Nuclei Only"));
+        nucleiRow.managedProperty().bind(nucleiRow.visibleProperty());
 
-        ToggleGroup thresholdModeGroup = new ToggleGroup();
-        RadioButton autoMode = new RadioButton("Auto");
-        RadioButton manualMode = new RadioButton("Manual");
-        autoMode.setToggleGroup(thresholdModeGroup);
-        manualMode.setToggleGroup(thresholdModeGroup);
-        autoMode.setSelected(true);
-
-        Spinner<Integer> manualThresholdSpinner = new Spinner<>();
-        manualThresholdSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 65535, 10));
-        manualThresholdSpinner.setEditable(true);
-        manualThresholdSpinner.disableProperty().bind(manualMode.selectedProperty().not());
-
+        TextField multiplierField = new TextField("1.0");
+        multiplierField.setPrefWidth(60);
+        multiplierField.setTooltip(new Tooltip(
+                "Controls how many regions are excluded. Lower = stricter (fewer exclusions). Higher = more exclusions."));
         HBox thresholdRow = new HBox(10,
-                new Label("Threshold Mode:"),
-                autoMode,
-                manualMode,
-                new Label("Value:"),
-                manualThresholdSpinner);
+                new Label("Threshold Multiplier:"),
+                multiplierField,
+                new Label("(0.1 = fewer, 1.0 = more exclusions)"));
         thresholdRow.setAlignment(Pos.CENTER_LEFT);
 
         Button runButton = new Button("Run Auto-Exclusion");
+        runButton.setTooltip(
+                new Tooltip("Marks low-intensity regions as excluded based on adaptive Otsu thresholding."));
         runButton.disableProperty().bind(running);
         runButton.setOnAction(e -> {
-            String selectedChannel = channelSelector.getValue();
-            if (selectedChannel == null || selectedChannel.isBlank()) {
-                Dialogs.showErrorMessage("Auto-Exclude", "Select a channel.");
+            boolean useMax = "All Channels (Max)".equals(channelModeSelector.getValue());
+            String nucleiChannel = channelSelector.getValue();
+
+            if (!useMax && (nucleiChannel == null || nucleiChannel.isBlank())) {
+                Dialogs.showErrorMessage("Auto-Exclude", "Select a nuclei channel.");
                 return;
             }
-            if (!availableImageChannels.isEmpty() && !availableImageChannels.contains(selectedChannel)) {
-                Dialogs.showErrorMessage("Auto-Exclude",
-                        "Selected channel '" + selectedChannel
-                                + "' is not present in the current image. Auto-exclusion will skip images missing this channel.");
-                if (currentImageToggle.isSelected()) {
-                    return;
-                }
-            }
-            List<String> selectedChannels = List.of(selectedChannel);
 
-            boolean isAuto = autoMode.isSelected();
-            int manualThreshold = manualThresholdSpinner.getValue();
-            Map<String, Integer> thresholds = new HashMap<>();
-            for (String ch : selectedChannels) {
-                thresholds.put(ch, isAuto ? null : manualThreshold);
+            double multiplier;
+            try {
+                multiplier = Double.parseDouble(multiplierField.getText());
+            } catch (NumberFormatException ex) {
+                Dialogs.showErrorMessage("Auto-Exclude",
+                        "Invalid threshold multiplier. Please enter a number (e.g., 1.0).");
+                return;
+            }
+
+            List<String> channelsToProcess;
+            if (useMax) {
+                channelsToProcess = new ArrayList<>(availableImageChannels);
+                if (channelsToProcess.isEmpty()) {
+                    channelsToProcess.addAll(List.of("Red", "Green", "Blue"));
+                }
+            } else {
+                channelsToProcess = List.of(nucleiChannel);
             }
 
             final List<Path> selectedProjectsForExperiment;
@@ -383,19 +377,20 @@ public class BraiAnDetectDialog {
             runAsync("Auto-Exclude Empty Regions", () -> {
                 List<ExclusionReport> reports;
                 if (currentImageToggle.isSelected()) {
-                    reports = AutoExcludeEmptyRegionsRunner.runCurrentImage(qupath, selectedChannels, thresholds);
+                    reports = AutoExcludeEmptyRegionsRunner.runCurrentImage(qupath, channelsToProcess, useMax,
+                            multiplier);
                 } else if (currentProjectToggle.isSelected()) {
-                    reports = AutoExcludeEmptyRegionsRunner.runProject(qupath, selectedChannels, thresholds);
+                    reports = AutoExcludeEmptyRegionsRunner.runProject(qupath, channelsToProcess, useMax, multiplier);
                 } else {
                     reports = AutoExcludeEmptyRegionsRunner.runBatch(qupath, selectedProjectsForExperiment,
-                            selectedChannels, thresholds);
+                            channelsToProcess, useMax, multiplier);
                 }
 
                 Platform.runLater(() -> new ExclusionReviewDialog(qupath, reports).show());
             });
         });
 
-        panel.getChildren().addAll(title, channelsRow, thresholdRow, runButton);
+        panel.getChildren().addAll(title, modeRow, nucleiRow, thresholdRow, runButton);
         return panel;
     }
 
@@ -566,7 +561,6 @@ public class BraiAnDetectDialog {
             selectedByPath.put(project.getProjectFile(), project.isSelected());
         }
 
-        // Run discovery in background to avoid freezing UI
         runAsync("Discover Projects", () -> {
             List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
             List<DiscoveredProject> refreshed = new ArrayList<>();

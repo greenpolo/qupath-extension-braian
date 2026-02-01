@@ -93,17 +93,17 @@ public class ExclusionReviewDialog extends Stage {
             return new ReadOnlyStringWrapper(name);
         });
 
-        TableColumn<ExclusionReport, String> intensityCol = new TableColumn<>("Mean Intensity");
-        intensityCol.setCellValueFactory(data -> {
-            double v = data.getValue().maxCoverage();
+        TableColumn<ExclusionReport, String> percentileCol = new TableColumn<>("Percentile");
+        percentileCol.setCellValueFactory(data -> {
+            double v = data.getValue().percentile();
             if (Double.isNaN(v)) {
                 return new ReadOnlyStringWrapper("n/a");
             }
-            return new ReadOnlyStringWrapper(DECIMAL_FMT.format(v));
+            return new ReadOnlyStringWrapper(DECIMAL_FMT.format(v) + "%");
         });
-        intensityCol.setMaxWidth(140);
-        intensityCol.setMinWidth(140);
-        intensityCol.setCellFactory(col -> new TableCell<>() {
+        percentileCol.setMaxWidth(120);
+        percentileCol.setMinWidth(120);
+        percentileCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
@@ -112,7 +112,7 @@ public class ExclusionReviewDialog extends Stage {
             }
         });
 
-        table.getColumns().addAll(imageCol, regionCol, intensityCol);
+        table.getColumns().addAll(imageCol, regionCol, percentileCol);
         table.setRowFactory(tv -> {
             TableRow<ExclusionReport> row = new TableRow<>();
             row.setOnMouseClicked(e -> {
@@ -150,6 +150,18 @@ public class ExclusionReviewDialog extends Stage {
     }
 
     private void navigateTo(ExclusionReport report) {
+        // Check if we're already viewing this image
+        ImageData<BufferedImage> current = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
+        if (current != null) {
+            String currentImageName = current.getServerMetadata().getName();
+            boolean sameProject = report.projectFile() == null || isCurrentProject(report.projectFile());
+            if (sameProject && currentImageName.equals(report.imageName())) {
+                // Already viewing this image, just select and center
+                Platform.runLater(() -> selectAndCenter(current, report.excludedAnnotationId()));
+                return;
+            }
+        }
+
         executor.execute(() -> {
             try {
                 LoadedImage loaded = loadImageForReport(report);
