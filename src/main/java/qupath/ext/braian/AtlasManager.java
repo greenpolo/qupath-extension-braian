@@ -545,85 +545,143 @@ public class AtlasManager {
      * hierarchy and
      * classifying it as {@link #EXCLUDE_CLASSIFICATION}.
      */
+    /**
+     * Automatically excludes atlas regions that appear empty based on adaptive Otsu
+     * thresholding.
+     *
+     * @param imageData            the image data
+     * @param channelNames         the list of channel names to consider
+     * @param useMaxAcrossChannels if true, a region is kept if its max intensity
+     *                             across all channels
+     *                             is above the threshold
+     * @param thresholdMultiplier  multiplier applied to the calculated Otsu
+     *                             threshold
+     * @return a list of exclusion reports
+     */
     public List<ExclusionReport> autoExcludeEmptyRegions(
             ImageData<BufferedImage> imageData,
             List<String> channelNames,
-            Map<String, Integer> thresholds) {
+            boolean useMaxAcrossChannels,
+            double thresholdMultiplier) {
         Objects.requireNonNull(imageData, "imageData");
         Objects.requireNonNull(channelNames, "channelNames");
-        Objects.requireNonNull(thresholds, "thresholds");
 
         if (channelNames.isEmpty()) {
             return List.of();
         }
 
-        String nucleiChannel = channelNames.get(0);
-        int threshold;
-        Integer manualThreshold = thresholds.get(nucleiChannel);
-        if (manualThreshold != null) {
-            threshold = manualThreshold;
-        } else {
+        // 1. Calculate Otsu thresholds for each channel
+        Map<String, Integer> otsuThresholds = new HashMap<>();
+        for (String channelName : channelNames) {
             try {
-                ImageChannelTools channel = new ImageChannelTools(nucleiChannel, imageData);
+                ImageChannelTools channel = new ImageChannelTools(channelName, imageData);
                 ImageProcessor ip = channel.getImageProcessor(AUTO_THRESHOLD_RESOLUTION_LEVEL);
                 AutoThresholder thresholder = new AutoThresholder();
-                threshold = thresholder.getThreshold(AutoThresholder.Method.Otsu, ip.getHistogram());
-                getLogger().info("Computed Otsu threshold for channel '{}': {}", nucleiChannel, threshold);
+                int threshold = thresholder.getThreshold(AutoThresholder.Method.Otsu, ip.getHistogram());
+                otsuThresholds.put(channelName, threshold);
+                getLogger().info("Computed Otsu threshold for channel '{}': {}", channelName, threshold);
             } catch (Exception e) {
-                getLogger().error("Failed to compute Otsu threshold for channel '{}': {}", nucleiChannel,
-                        e.getMessage());
-                return List.of();
+                getLogger().error("Failed to compute Otsu threshold for channel '{}': {}", channelName, e.getMessage());
             }
         }
 
+        if (otsuThresholds.isEmpty()) {
+            return List.of();
+        }
+
+        // 2. Gather intensities for all regions
+        List<PathObject> regions = flatten().stream()
+                .filter(o -> o instanceof PathAnnotationObject)
+                .filter(o -> o != this.atlasObject)
+                .filter(o -> {
+                    String name = o.getName();
+                    return name == null || (!"Root".equalsIgnoreCase(name));
+                })
+                .toList();
+
         // Avoid creating duplicate exclusions for regions already excluded
-        Set<PathObject> alreadyExcluded = getExcludedBrainRegions();
+        Set<PathObject> alreadyExcludedData = getExcludedBrainRegions();
+
+        // Map to store relevant intensity for each region
+        Map<PathObject, Double> regionIntensities = new HashMap<>();
+        List<Double> allIntensitiesForDistribution = new ArrayList<>();
+
+        for (PathObject region : regions) {
+            if (alreadyExcludedData.contains(region))
+                continue;
+
+            double bestIntensity = -1.0;
+            for (String channelName : channelNames) {
+                if (!otsuThresholds.containsKey(channelName))
+                    continue;
+
+                try {
+                    double mean = getRegionMean(imageData, (PathAnnotationObject) region, channelName,
+                            AUTO_THRESHOLD_RESOLUTION_LEVEL);
+                    double normalized = mean / otsuThresholds.get(channelName);
+
+                    if (useMaxAcrossChannels) {
+                        if (normalized > bestIntensity)
+                            bestIntensity = normalized;
+                    } else {
+                        bestIntensity = normalized;
+                        break; // Only use first channel (Nuclei)
+                    }
+                } catch (Exception e) {
+                    getLogger().warn("Failed to compute mean for region '{}' channel '{}': {}",
+                            region.getName(), channelName, e.getMessage());
+                }
+            }
+
+            if (bestIntensity >= 0) {
+                regionIntensities.put(region, bestIntensity);
+                allIntensitiesForDistribution.add(bestIntensity);
+            }
+        }
+
+        if (allIntensitiesForDistribution.isEmpty())
+            return List.of();
+
+        // 3. Sort for percentile calculation
+        Collections.sort(allIntensitiesForDistribution);
 
         List<ExclusionReport> reports = new ArrayList<>();
-        for (PathObject region : flatten()) {
-            if (!(region instanceof PathAnnotationObject annotation)) {
-                continue;
-            }
-            if (region == this.atlasObject) {
-                continue;
-            }
-            String name = annotation.getName();
-            if (name != null && ("Root".equals(name) || "root".equals(name))) {
-                continue;
-            }
-            if (alreadyExcluded.contains(region)) {
-                continue;
-            }
-            var roi = annotation.getROI();
-            if (roi == null || !roi.isArea() || roi.getArea() <= 0) {
-                continue;
-            }
+        String imageName = imageData.getServerMetadata().getName();
 
-            double mean;
-            try {
-                mean = getRegionMean(imageData, annotation, nucleiChannel, AUTO_THRESHOLD_RESOLUTION_LEVEL);
-            } catch (Exception e) {
-                getLogger().warn("Failed to compute mean for region '{}' channel '{}': {}",
-                        annotation.getName(), nucleiChannel, e.getMessage());
-                continue;
-            }
+        for (Map.Entry<PathObject, Double> entry : regionIntensities.entrySet()) {
+            PathObject region = entry.getKey();
+            double intensity = entry.getValue();
 
-            if (mean < threshold) {
+            // intensity is "mean / Otsu"
+            // Exclusion condition: mean < Otsu * multiplier => mean / Otsu < multiplier
+            if (intensity < thresholdMultiplier) {
                 PathAnnotationObject exclude = (PathAnnotationObject) PathObjects
-                        .createAnnotationObject(annotation.getROI());
-                exclude.setName(annotation.getName());
+                        .createAnnotationObject(region.getROI());
+                exclude.setName(region.getName());
                 exclude.setPathClass(EXCLUDE_CLASSIFICATION);
+
+                // Calculate percentile rank (informational)
+                int rank = Collections.binarySearch(allIntensitiesForDistribution, intensity);
+                if (rank < 0)
+                    rank = -(rank + 1);
+                double percentile = (double) rank / allIntensitiesForDistribution.size() * 100.0;
+
+                // Stamp measurements
+                exclude.getMeasurementList().put("Auto-Exclude: Normalized Intensity", intensity);
+                exclude.getMeasurementList().put("Auto-Exclude: Percentile Rank", percentile);
+
                 this.hierarchy.addObject(exclude);
 
                 reports.add(new ExclusionReport(
                         null,
                         null,
-                        imageData.getServerMetadata().getName(),
+                        imageName,
                         exclude.getID(),
-                        annotation.getName(),
-                        mean));
+                        region.getName(),
+                        percentile));
             }
         }
+
         return reports;
     }
 
@@ -646,7 +704,7 @@ public class AtlasManager {
                         imageName,
                         ann.getID(),
                         ann.getName(),
-                        Double.NaN))
+                        ann.getMeasurementList().get("Auto-Exclude: Percentile Rank")))
                 .toList();
     }
 

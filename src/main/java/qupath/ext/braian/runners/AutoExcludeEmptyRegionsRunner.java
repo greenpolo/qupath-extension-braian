@@ -52,7 +52,8 @@ public final class AutoExcludeEmptyRegionsRunner {
     public static List<ExclusionReport> runCurrentImage(
             QuPathGUI qupath,
             List<String> channelNames,
-            Map<String, Integer> thresholds) {
+            boolean useMaxAcrossChannels,
+            double thresholdMultiplier) {
         ImageData<BufferedImage> imageData = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
         if (imageData == null) {
             throw new IllegalStateException("No image is currently open.");
@@ -69,14 +70,14 @@ public final class AutoExcludeEmptyRegionsRunner {
         List<ExclusionReport> reports;
         try {
             AtlasManager atlas = new AtlasManager(imageData.getHierarchy());
-            reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds);
+            reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, useMaxAcrossChannels, thresholdMultiplier);
         } catch (Exception e) {
             throw new IllegalStateException("Auto-exclusion failed for " + imageName + ": " + e.getMessage(), e);
         }
 
         List<ExclusionReport> withContext = reports.stream()
                 .map(r -> new ExclusionReport(projectFile, projectName, imageName, r.excludedAnnotationId(),
-                        r.regionName(), r.maxCoverage()))
+                        r.regionName(), r.percentile()))
                 .toList();
 
         if (entry != null) {
@@ -102,7 +103,8 @@ public final class AutoExcludeEmptyRegionsRunner {
     public static List<ExclusionReport> runProject(
             QuPathGUI qupath,
             List<String> channelNames,
-            Map<String, Integer> thresholds) {
+            boolean useMaxAcrossChannels,
+            double thresholdMultiplier) {
         Project<BufferedImage> project = qupath.getProject();
         if (project == null) {
             throw new IllegalStateException("No project open.");
@@ -127,10 +129,11 @@ public final class AutoExcludeEmptyRegionsRunner {
                     continue;
                 }
                 AtlasManager atlas = new AtlasManager(imageData.getHierarchy());
-                List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds);
+                List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames,
+                        useMaxAcrossChannels, thresholdMultiplier);
                 for (ExclusionReport r : reports) {
                     allReports.add(new ExclusionReport(projectFile, projectName, entry.getImageName(),
-                            r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
+                            r.excludedAnnotationId(), r.regionName(), r.percentile()));
                 }
                 entry.saveImageData(imageData);
             } catch (Exception e) {
@@ -166,7 +169,8 @@ public final class AutoExcludeEmptyRegionsRunner {
             QuPathGUI qupath,
             List<Path> projectFiles,
             List<String> channelNames,
-            Map<String, Integer> thresholds) {
+            boolean useMaxAcrossChannels,
+            double thresholdMultiplier) {
         if (projectFiles == null || projectFiles.isEmpty()) {
             throw new IllegalArgumentException("No project files provided.");
         }
@@ -198,10 +202,11 @@ public final class AutoExcludeEmptyRegionsRunner {
                         continue;
                     }
                     AtlasManager atlas = new AtlasManager(imageData.getHierarchy());
-                    List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds);
+                    List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames,
+                            useMaxAcrossChannels, thresholdMultiplier);
                     for (ExclusionReport r : reports) {
                         allReports.add(new ExclusionReport(projectFile, projectName, entry.getImageName(),
-                                r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
+                                r.excludedAnnotationId(), r.regionName(), r.percentile()));
                     }
                     entry.saveImageData(imageData);
                 } catch (Exception e) {
@@ -261,7 +266,7 @@ public final class AutoExcludeEmptyRegionsRunner {
                 }
                 for (ExclusionReport r : reports) {
                     all.add(new ExclusionReport(projectFile, projectName, entry.getImageName(),
-                            r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
+                            r.excludedAnnotationId(), r.regionName(), r.percentile()));
                 }
             } catch (Exception e) {
                 logger.error("Failed to gather exclusions for {}: {}", entry.getImageName(), e.getMessage());

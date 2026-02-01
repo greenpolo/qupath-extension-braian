@@ -19,8 +19,7 @@ import java.util.UUID;
  * @param excludedAnnotationId the {@link java.util.UUID} of the exclusion
  *                             annotation
  * @param regionName           the excluded region name; may be null
- * @param maxCoverage          the maximum per-channel coverage in {@code [0,1]}
- *                             when computed; may be {@link Double#NaN}
+ * @param percentile           the percentile rank of the excluded region
  */
 public record ExclusionReport(
         Path projectFile,
@@ -28,7 +27,7 @@ public record ExclusionReport(
         String imageName,
         UUID excludedAnnotationId,
         String regionName,
-        double maxCoverage) {
+        double percentile) {
 
     /**
      * @return a compact label combining project and image names
