@@ -17,6 +17,7 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.Hyperlink;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
@@ -45,6 +46,7 @@ import qupath.ext.braian.config.ProjectsConfig;
 import qupath.ext.braian.runners.ABBAImporterRunner;
 import qupath.ext.braian.runners.AutoExcludeEmptyRegionsRunner;
 import qupath.ext.braian.runners.BraiAnAnalysisRunner;
+import qupath.ext.braian.runners.ClassifierSampleRunner;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.ext.braian.utils.ProjectDiscoveryService;
 import qupath.fx.dialogs.Dialogs;
@@ -58,8 +60,11 @@ import org.yaml.snakeyaml.error.YAMLException;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.awt.Desktop;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -274,8 +279,82 @@ public class BraiAnDetectDialog {
 
         VBox autoExcludePanel = buildAutoExcludePanel(currentImageToggle, currentProjectToggle, experimentToggle);
 
-        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importAtlasPanel, autoExcludePanel);
+        VBox classifierSamplePanel = buildClassifierTrainingPanel();
+
+        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importAtlasPanel, autoExcludePanel,
+                classifierSamplePanel);
         return new Tab("Project Preparation", container);
+    }
+
+    private VBox buildClassifierTrainingPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(12));
+        panel.setStyle(
+                "-fx-border-color: -fx-box-border; -fx-border-radius: 6; -fx-background-radius: 6; -fx-background-color: -fx-control-inner-background;");
+
+        Label title = new Label("Classifier Training Sample");
+        title.setStyle("-fx-font-weight: bold;");
+
+        Label desc = new Label("Create a new project with random samples from all projects in the experiment.");
+        desc.setWrapText(true);
+
+        Spinner<Integer> samplesSpinner = new Spinner<>(1, 50, 3);
+        samplesSpinner.setEditable(true);
+        samplesSpinner.setPrefWidth(80);
+        HBox samplesRow = new HBox(10, new Label("Samples per Project:"), samplesSpinner);
+        samplesRow.setAlignment(Pos.CENTER_LEFT);
+
+        TextField projectNameField = new TextField("ClassifierTrainingGrounds");
+        HBox nameRow = new HBox(10, new Label("Project Name:"), projectNameField);
+        nameRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(projectNameField, Priority.ALWAYS);
+
+        Button createButton = new Button("Create Training Project");
+        createButton.setTooltip(new Tooltip(
+                "Creates a new QuPath project in the experiment folder containing sampled images."));
+        createButton.disableProperty().bind(running);
+        createButton.setOnAction(e -> {
+            Path rootPath = resolveImportBatchRoot();
+            if (rootPath == null) {
+                // If not in experiment mode, prompt for root
+                chooseBatchFolder(stage, importBatchRootField); // This updates the field
+                rootPath = resolveImportBatchRoot();
+            }
+            if (rootPath == null) {
+                Dialogs.showErrorMessage("Classifier Sample", "Select an experiment root folder first.");
+                return;
+            }
+
+            final Path experimentRoot = rootPath;
+            final int samples = samplesSpinner.getValue();
+            final String name = projectNameField.getText();
+
+            if (name == null || name.isBlank()) {
+                Dialogs.showErrorMessage("Classifier Sample", "Enter a project name.");
+                return;
+            }
+
+            runAsync("Create Classifier Project", () -> {
+                try {
+                    ClassifierSampleRunner.run(qupath, experimentRoot, samples, name);
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+            });
+        });
+
+        Hyperlink docLink = new Hyperlink("Read about Classifier Training (requires cell detection first)");
+        docLink.setOnAction(e -> {
+            try {
+                Desktop.getDesktop().browse(new URI(
+                        "https://silvalab.codeberg.page/BraiAn/object-classifiers/#:~:text=interface%20(CLI).-,Classifier%20training,-Dataset%20preparation"));
+            } catch (Exception ex) {
+                logger.error("Failed to open link", ex);
+            }
+        });
+
+        panel.getChildren().addAll(title, desc, samplesRow, nameRow, createButton, docLink);
+        return panel;
     }
 
     private VBox buildAutoExcludePanel(RadioButton currentImageToggle, RadioButton currentProjectToggle,
