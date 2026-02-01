@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -16,7 +16,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
-import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ListView;
 import javafx.scene.control.Label;
 import javafx.scene.control.RadioButton;
@@ -72,8 +72,8 @@ import java.util.concurrent.Executors;
  * <p>
  * This dialog provides:
  * <ul>
- *   <li>Project preparation (ABBA atlas import, auto-exclude empty regions)</li>
- *   <li>Detection and analysis configuration and execution</li>
+ * <li>Project preparation (ABBA atlas import, auto-exclude empty regions)</li>
+ * <li>Detection and analysis configuration and execution</li>
  * </ul>
  */
 public class BraiAnDetectDialog {
@@ -139,7 +139,7 @@ public class BraiAnDetectDialog {
     /**
      * Creates the dialog.
      *
-     * @param qupath the QuPath GUI instance
+     * @param qupath     the QuPath GUI instance
      * @param initialTab which tab should be selected when the dialog opens
      */
     public BraiAnDetectDialog(QuPathGUI qupath, InitialTab initialTab) {
@@ -287,14 +287,17 @@ public class BraiAnDetectDialog {
 
         VBox autoExcludePanel = buildAutoExcludePanel(currentImageToggle, currentProjectToggle, experimentToggle);
 
-        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importButton, warningLabel, autoExcludePanel);
+        container.getChildren().addAll(scopeRow, batchChooserRow, projectListPanel, importButton, warningLabel,
+                autoExcludePanel);
         return new Tab("Project Preparation", container);
     }
 
-    private VBox buildAutoExcludePanel(RadioButton currentImageToggle, RadioButton currentProjectToggle, RadioButton experimentToggle) {
+    private VBox buildAutoExcludePanel(RadioButton currentImageToggle, RadioButton currentProjectToggle,
+            RadioButton experimentToggle) {
         VBox panel = new VBox(10);
         panel.setPadding(new Insets(12));
-        panel.setStyle("-fx-border-color: -fx-box-border; -fx-border-radius: 6; -fx-background-radius: 6; -fx-background-color: -fx-control-inner-background;");
+        panel.setStyle(
+                "-fx-border-color: -fx-box-border; -fx-border-radius: 6; -fx-background-radius: 6; -fx-background-color: -fx-control-inner-background;");
 
         Label title = new Label("Auto-Exclude Empty Regions");
         title.setStyle("-fx-font-weight: bold;");
@@ -306,16 +309,14 @@ public class BraiAnDetectDialog {
             channelOptions.addAll(List.of("Red", "Green", "Blue"));
         }
 
-        HBox channelsRow = new HBox(10);
-        channelsRow.setAlignment(Pos.CENTER_LEFT);
-        channelsRow.getChildren().add(new Label("Channels:"));
-        List<CheckBox> channelChecks = new ArrayList<>();
-        for (String ch : channelOptions) {
-            CheckBox cb = new CheckBox(ch);
-            cb.setSelected(true);
-            channelChecks.add(cb);
-            channelsRow.getChildren().add(cb);
+        ComboBox<String> channelSelector = new ComboBox<>(FXCollections.observableArrayList(channelOptions));
+        channelSelector.setPromptText("Select nuclei channel");
+        channelSelector.setMaxWidth(Double.MAX_VALUE);
+        if (channelOptions.size() == 1) {
+            channelSelector.setValue(channelOptions.get(0));
         }
+        HBox channelsRow = new HBox(10, new Label("Nuclei channel:"), channelSelector);
+        channelsRow.setAlignment(Pos.CENTER_LEFT);
 
         ToggleGroup thresholdModeGroup = new ToggleGroup();
         RadioButton autoMode = new RadioButton("Auto");
@@ -337,24 +338,23 @@ public class BraiAnDetectDialog {
                 manualThresholdSpinner);
         thresholdRow.setAlignment(Pos.CENTER_LEFT);
 
-        Spinner<Integer> minCoverageSpinner = new Spinner<>();
-        minCoverageSpinner.setValueFactory(new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 100, 5));
-        minCoverageSpinner.setEditable(true);
-
-        HBox coverageRow = new HBox(10, new Label("Min Coverage:"), minCoverageSpinner, new Label("%"));
-        coverageRow.setAlignment(Pos.CENTER_LEFT);
-
         Button runButton = new Button("Run Auto-Exclusion");
         runButton.disableProperty().bind(running);
         runButton.setOnAction(e -> {
-            List<String> selectedChannels = channelChecks.stream()
-                    .filter(CheckBox::isSelected)
-                    .map(CheckBox::getText)
-                    .toList();
-            if (selectedChannels.isEmpty()) {
-                Dialogs.showErrorMessage("Auto-Exclude", "Select at least one channel.");
+            String selectedChannel = channelSelector.getValue();
+            if (selectedChannel == null || selectedChannel.isBlank()) {
+                Dialogs.showErrorMessage("Auto-Exclude", "Select a channel.");
                 return;
             }
+            if (!availableImageChannels.isEmpty() && !availableImageChannels.contains(selectedChannel)) {
+                Dialogs.showErrorMessage("Auto-Exclude",
+                        "Selected channel '" + selectedChannel
+                                + "' is not present in the current image. Auto-exclusion will skip images missing this channel.");
+                if (currentImageToggle.isSelected()) {
+                    return;
+                }
+            }
+            List<String> selectedChannels = List.of(selectedChannel);
 
             boolean isAuto = autoMode.isSelected();
             int manualThreshold = manualThresholdSpinner.getValue();
@@ -362,7 +362,6 @@ public class BraiAnDetectDialog {
             for (String ch : selectedChannels) {
                 thresholds.put(ch, isAuto ? null : manualThreshold);
             }
-            double minCoverage = minCoverageSpinner.getValue() / 100.0;
 
             final List<Path> selectedProjectsForExperiment;
             if (experimentToggle.isSelected()) {
@@ -384,18 +383,19 @@ public class BraiAnDetectDialog {
             runAsync("Auto-Exclude Empty Regions", () -> {
                 List<ExclusionReport> reports;
                 if (currentImageToggle.isSelected()) {
-                    reports = AutoExcludeEmptyRegionsRunner.runCurrentImage(qupath, selectedChannels, thresholds, minCoverage);
+                    reports = AutoExcludeEmptyRegionsRunner.runCurrentImage(qupath, selectedChannels, thresholds);
                 } else if (currentProjectToggle.isSelected()) {
-                    reports = AutoExcludeEmptyRegionsRunner.runProject(qupath, selectedChannels, thresholds, minCoverage);
+                    reports = AutoExcludeEmptyRegionsRunner.runProject(qupath, selectedChannels, thresholds);
                 } else {
-                    reports = AutoExcludeEmptyRegionsRunner.runBatch(qupath, selectedProjectsForExperiment, selectedChannels, thresholds, minCoverage);
+                    reports = AutoExcludeEmptyRegionsRunner.runBatch(qupath, selectedProjectsForExperiment,
+                            selectedChannels, thresholds);
                 }
 
                 Platform.runLater(() -> new ExclusionReviewDialog(qupath, reports).show());
             });
         });
 
-        panel.getChildren().addAll(title, channelsRow, thresholdRow, coverageRow, runButton);
+        panel.getChildren().addAll(title, channelsRow, thresholdRow, runButton);
         return panel;
     }
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -48,12 +48,14 @@ import java.util.concurrent.Executors;
 /**
  * Dialog for reviewing excluded regions across project entries.
  * <p>
- * This dialog displays a table of {@link ExclusionReport} items, allows navigation to an excluded annotation,
- * and supports restoring regions by removing the corresponding {@link AtlasManager#EXCLUDE_CLASSIFICATION} annotation.
+ * This dialog displays a table of {@link ExclusionReport} items, allows
+ * navigation to an excluded annotation,
+ * and supports restoring regions by removing the corresponding
+ * {@link AtlasManager#EXCLUDE_CLASSIFICATION} annotation.
  */
 public class ExclusionReviewDialog extends Stage {
     private static final Logger logger = LoggerFactory.getLogger(ExclusionReviewDialog.class);
-    private static final DecimalFormat PCT = new DecimalFormat("0.00");
+    private static final DecimalFormat DECIMAL_FMT = new DecimalFormat("0.00");
 
     private final QuPathGUI qupath;
     private final TableView<ExclusionReport> table = new TableView<>();
@@ -63,7 +65,7 @@ public class ExclusionReviewDialog extends Stage {
     /**
      * Creates a new review dialog.
      *
-     * @param qupath the QuPath GUI instance
+     * @param qupath  the QuPath GUI instance
      * @param reports the exclusion reports to display
      */
     public ExclusionReviewDialog(QuPathGUI qupath, List<ExclusionReport> reports) {
@@ -91,17 +93,17 @@ public class ExclusionReviewDialog extends Stage {
             return new ReadOnlyStringWrapper(name);
         });
 
-        TableColumn<ExclusionReport, String> coverageCol = new TableColumn<>("Max Coverage %");
-        coverageCol.setCellValueFactory(data -> {
+        TableColumn<ExclusionReport, String> intensityCol = new TableColumn<>("Mean Intensity");
+        intensityCol.setCellValueFactory(data -> {
             double v = data.getValue().maxCoverage();
-            if (!Double.isFinite(v)) {
-                return new ReadOnlyStringWrapper("—");
+            if (Double.isNaN(v)) {
+                return new ReadOnlyStringWrapper("n/a");
             }
-            return new ReadOnlyStringWrapper(PCT.format(v * 100.0));
+            return new ReadOnlyStringWrapper(DECIMAL_FMT.format(v));
         });
-        coverageCol.setMaxWidth(140);
-        coverageCol.setMinWidth(140);
-        coverageCol.setCellFactory(col -> new TableCell<>() {
+        intensityCol.setMaxWidth(140);
+        intensityCol.setMinWidth(140);
+        intensityCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
@@ -110,7 +112,7 @@ public class ExclusionReviewDialog extends Stage {
             }
         });
 
-        table.getColumns().addAll(imageCol, regionCol, coverageCol);
+        table.getColumns().addAll(imageCol, regionCol, intensityCol);
         table.setRowFactory(tv -> {
             TableRow<ExclusionReport> row = new TableRow<>();
             row.setOnMouseClicked(e -> {
@@ -121,7 +123,8 @@ public class ExclusionReviewDialog extends Stage {
             return row;
         });
 
-        Label hint = new Label("Double-click a row to navigate. Use 'Restore Selected' to remove the Exclude annotation.");
+        Label hint = new Label(
+                "Double-click a row to navigate. Use 'Restore Selected' to remove the Exclude annotation.");
         hint.setPadding(new Insets(0, 0, 8, 0));
 
         Button restore = new Button("Restore Selected");
@@ -192,8 +195,10 @@ public class ExclusionReviewDialog extends Stage {
         ImageData<BufferedImage> current = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
         if (current != null) {
             Project<BufferedImage> currentProject = qupath.getProject();
-            ProjectImageEntry<BufferedImage> currentEntry = currentProject != null ? currentProject.getEntry(current) : null;
-            String currentName = currentEntry != null ? currentEntry.getImageName() : current.getServerMetadata().getName();
+            ProjectImageEntry<BufferedImage> currentEntry = currentProject != null ? currentProject.getEntry(current)
+                    : null;
+            String currentName = currentEntry != null ? currentEntry.getImageName()
+                    : current.getServerMetadata().getName();
 
             boolean sameProject = report.projectFile() == null || isCurrentProject(report.projectFile());
             if (sameProject && currentName.equals(report.imageName())) {
@@ -303,7 +308,8 @@ public class ExclusionReviewDialog extends Stage {
         return new LoadedImage(project, entry, imageData);
     }
 
-    private static ProjectImageEntry<BufferedImage> findEntryByImageName(Project<BufferedImage> project, String imageName) {
+    private static ProjectImageEntry<BufferedImage> findEntryByImageName(Project<BufferedImage> project,
+            String imageName) {
         if (project == null || imageName == null) {
             return null;
         }
@@ -316,7 +322,7 @@ public class ExclusionReviewDialog extends Stage {
     }
 
     private record LoadedImage(Project<BufferedImage> project,
-                               ProjectImageEntry<BufferedImage> entry,
-                               ImageData<BufferedImage> imageData) {
+            ProjectImageEntry<BufferedImage> entry,
+            ImageData<BufferedImage> imageData) {
     }
 }

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -50,7 +50,8 @@ public class PixelClassifierConfig {
     }
 
     /**
-     * @param regionFilter optional list of region names to filter the export to; may be null
+     * @param regionFilter optional list of region names to filter the export to;
+     *                     may be null
      */
     public void setRegionFilter(List<String> regionFilter) {
         this.regionFilter = regionFilter;

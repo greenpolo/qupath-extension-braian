@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -52,7 +52,8 @@ import java.util.function.Supplier;
 /**
  * UI component representing a single channel configuration.
  * <p>
- * This card binds controls to a {@link ChannelDetectionsConfig} and emits callbacks when the
+ * This card binds controls to a {@link ChannelDetectionsConfig} and emits
+ * callbacks when the
  * configuration changes.
  */
 public class ChannelCard extends VBox {
@@ -68,77 +69,58 @@ public class ChannelCard extends VBox {
     private final VBox pixelClassifierList = new VBox(6);
     private final List<ChannelClassifierConfig> classifiers;
     private final List<PixelClassifierConfig> pixelClassifiers;
-    private Runnable onRemove = () -> {};
+    private Runnable onRemove = () -> {
+    };
 
-    private static final String HELP_URL_THRESHOLD =
-            "https://silvalab.codeberg.page/BraiAn/image-analysis/#:~:text=Automatic%20threshold";
+    private static final String HELP_URL_THRESHOLD = "https://silvalab.codeberg.page/BraiAn/image-analysis/#:~:text=Automatic%20threshold";
 
-    private static final String TOOLTIP_PIXEL_SIZE =
-            "Choose pixel size at which detection will be performed - higher values are likely to be faster, but may be less accurate; set <= 0 to use the full image resolution";
-    private static final String TOOLTIP_BACKGROUND_RADIUS =
-            "Radius for background estimation, should be > the largest nucleus radius, or <= 0 to turn off background subtraction";
-    private static final String TOOLTIP_BACKGROUND_RECONSTRUCTION =
-            "Use opening-by-reconstruction for background estimation (default is 'true'). Opening by reconstruction tends to give a 'better' background estimate, because it incorporates more information across the image tile used for cell detection. However, in some cases (e.g. images with prominent folds, background staining, or other artefacts) this can cause problems, with the background estimate varying substantially between tiles. Opening by reconstruction was always used in QuPath before v0.4.0, but now it is optional.";
-    private static final String TOOLTIP_MEDIAN_RADIUS =
-            "Radius of median filter used to reduce image texture (optional)";
-    private static final String TOOLTIP_SIGMA =
-            "Sigma value for Gaussian filter used to reduce noise; increasing the value stops nuclei being fragmented, but may reduce the accuracy of boundaries";
-    private static final String TOOLTIP_MIN_AREA =
-            "Detected nuclei with an area < minimum area will be discarded";
-    private static final String TOOLTIP_MAX_AREA =
-            "Detected nuclei with an area > maximum area will be discarded";
-    private static final String TOOLTIP_THRESHOLD =
-            "Intensity threshold - detected nuclei must have a mean intensity >= threshold";
-    private static final String TOOLTIP_HIST_RESOLUTION =
-            "Resolution level at which the histogram is computed";
-    private static final String TOOLTIP_HIST_SMOOTH =
-            "Size of the window used by the moving average to smooth the histogram";
-    private static final String TOOLTIP_HIST_PEAK =
-            "Amount of prominence from the surrounding values in the histogram for a local maximum to be considered a 'peak'";
-    private static final String TOOLTIP_HIST_NPEAK =
-            "n-th peak to use as threshold (starts from 1)";
-    private static final String TOOLTIP_WATERSHED =
-            "Split merged detected nuclei based on shape ('roundness')";
-    private static final String TOOLTIP_CELL_EXPANSION =
-            "Amount by which to expand detected nuclei to approximate the full cell area";
-    private static final String TOOLTIP_INCLUDE_NUCLEI =
-            "If cell expansion is used, optionally include/exclude the nuclei within the detected cells";
-    private static final String TOOLTIP_SMOOTH_BOUNDARIES =
-            "Smooth the detected nucleus/cell boundaries";
-    private static final String TOOLTIP_MAKE_MEASUREMENTS =
-            "Add default shape & intensity measurements during detection";
-    private static final String TOOLTIP_CLASSIFIER_REGIONS =
-            "List of the annotation names for which the classifier is applied";
-    private static final String TOOLTIP_PIXEL_CLASSIFIER_REGIONS =
-            "List of atlas regions for which the pixel classifier is applied";
+    private static final String TOOLTIP_PIXEL_SIZE = "Choose pixel size at which detection will be performed - higher values are likely to be faster, but may be less accurate; set <= 0 to use the full image resolution";
+    private static final String TOOLTIP_BACKGROUND_RADIUS = "Radius for background estimation, should be > the largest nucleus radius, or <= 0 to turn off background subtraction";
+    private static final String TOOLTIP_BACKGROUND_RECONSTRUCTION = "Use opening-by-reconstruction for background estimation (default is 'true'). Opening by reconstruction tends to give a 'better' background estimate, because it incorporates more information across the image tile used for cell detection. However, in some cases (e.g. images with prominent folds, background staining, or other artefacts) this can cause problems, with the background estimate varying substantially between tiles. Opening by reconstruction was always used in QuPath before v0.4.0, but now it is optional.";
+    private static final String TOOLTIP_MEDIAN_RADIUS = "Radius of median filter used to reduce image texture (optional)";
+    private static final String TOOLTIP_SIGMA = "Sigma value for Gaussian filter used to reduce noise; increasing the value stops nuclei being fragmented, but may reduce the accuracy of boundaries";
+    private static final String TOOLTIP_MIN_AREA = "Detected nuclei with an area < minimum area will be discarded";
+    private static final String TOOLTIP_MAX_AREA = "Detected nuclei with an area > maximum area will be discarded";
+    private static final String TOOLTIP_THRESHOLD = "Intensity threshold - detected nuclei must have a mean intensity >= threshold";
+    private static final String TOOLTIP_HIST_RESOLUTION = "Resolution level at which the histogram is computed";
+    private static final String TOOLTIP_HIST_SMOOTH = "Size of the window used by the moving average to smooth the histogram";
+    private static final String TOOLTIP_HIST_PEAK = "Amount of prominence from the surrounding values in the histogram for a local maximum to be considered a 'peak'";
+    private static final String TOOLTIP_HIST_NPEAK = "n-th peak to use as threshold (starts from 1)";
+    private static final String TOOLTIP_WATERSHED = "Split merged detected nuclei based on shape ('roundness')";
+    private static final String TOOLTIP_CELL_EXPANSION = "Amount by which to expand detected nuclei to approximate the full cell area";
+    private static final String TOOLTIP_INCLUDE_NUCLEI = "If cell expansion is used, optionally include/exclude the nuclei within the detected cells";
+    private static final String TOOLTIP_SMOOTH_BOUNDARIES = "Smooth the detected nucleus/cell boundaries";
+    private static final String TOOLTIP_MAKE_MEASUREMENTS = "Add default shape & intensity measurements during detection";
+    private static final String TOOLTIP_CLASSIFIER_REGIONS = "List of the annotation names for which the classifier is applied";
+    private static final String TOOLTIP_PIXEL_CLASSIFIER_REGIONS = "List of atlas regions for which the pixel classifier is applied";
 
     private static final String BADGE_GLOBAL_TEXT = "🌍 Global";
     private static final String BADGE_PARTIAL_TEXT = "🎯 Partial";
-    private static final String BADGE_GLOBAL_STYLE =
-            "-fx-background-color: #E6F4EA; -fx-text-fill: #137333; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
-    private static final String BADGE_PARTIAL_STYLE =
-            "-fx-background-color: #E8F0FE; -fx-text-fill: #1A73E8; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
+    private static final String BADGE_GLOBAL_STYLE = "-fx-background-color: #E6F4EA; -fx-text-fill: #137333; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
+    private static final String BADGE_PARTIAL_STYLE = "-fx-background-color: #E8F0FE; -fx-text-fill: #1A73E8; -fx-background-radius: 8; -fx-padding: 2 8; -fx-font-size: 10px; -fx-font-weight: bold;";
 
     /**
      * Creates a channel card.
      *
-     * @param config the per-channel configuration to edit
-     * @param availableChannels list of channel names that can be selected
-     * @param owner owning stage used for dialogs
-     * @param configRootSupplier supplier for the directory containing configuration resources
-     * @param projectDirSupplier supplier for the current project directory
-     * @param onConfigChanged callback invoked when configuration is changed
+     * @param config               the per-channel configuration to edit
+     * @param availableChannels    list of channel names that can be selected
+     * @param owner                owning stage used for dialogs
+     * @param configRootSupplier   supplier for the directory containing
+     *                             configuration resources
+     * @param projectDirSupplier   supplier for the current project directory
+     * @param onConfigChanged      callback invoked when configuration is changed
      * @param onChannelNameChanged callback invoked when the channel name is changed
-     * @param isUpdatingSupplier supplier indicating whether UI is being updated programmatically
+     * @param isUpdatingSupplier   supplier indicating whether UI is being updated
+     *                             programmatically
      */
     public ChannelCard(ChannelDetectionsConfig config,
-                       List<String> availableChannels,
-                       Stage owner,
-                       Supplier<Path> configRootSupplier,
-                       Supplier<Path> projectDirSupplier,
-                       Runnable onConfigChanged,
-                       Runnable onChannelNameChanged,
-                       BooleanSupplier isUpdatingSupplier) {
+            List<String> availableChannels,
+            Stage owner,
+            Supplier<Path> configRootSupplier,
+            Supplier<Path> projectDirSupplier,
+            Runnable onConfigChanged,
+            Runnable onChannelNameChanged,
+            BooleanSupplier isUpdatingSupplier) {
         this.config = config;
         this.params = config.getParameters();
         this.owner = owner;
@@ -186,7 +168,8 @@ public class ChannelCard extends VBox {
         Button removeButton = new Button("Remove");
         removeButton.setOnAction(event -> onRemove.run());
 
-        HBox header = new HBox(8, new Label("Source Ch"), channelIdSpinner, new Label("-> Name"), channelName, removeButton);
+        HBox header = new HBox(8, new Label("Source Ch"), channelIdSpinner, new Label("-> Name"), channelName,
+                removeButton);
         header.setAlignment(Pos.CENTER_LEFT);
         HBox.setHgrow(channelName, Priority.ALWAYS);
 
@@ -311,16 +294,19 @@ public class ChannelCard extends VBox {
         pixelClassifierPane.managedProperty().bind(enablePixelClassification.selectedProperty());
         pixelClassifierPane.visibleProperty().bind(enablePixelClassification.selectedProperty());
 
-        getChildren().addAll(header, enableCellDetection, cellDetectionSection, enablePixelClassification, pixelClassifierPane);
+        getChildren().addAll(header, enableCellDetection, cellDetectionSection, enablePixelClassification,
+                pixelClassifierPane);
     }
 
     /**
      * Sets the callback invoked when the user clicks the remove button.
      *
-     * @param onRemove callback invoked when removing the channel; if null a no-op is used
+     * @param onRemove callback invoked when removing the channel; if null a no-op
+     *                 is used
      */
     public void setOnRemove(Runnable onRemove) {
-        this.onRemove = Objects.requireNonNullElse(onRemove, () -> {});
+        this.onRemove = Objects.requireNonNullElse(onRemove, () -> {
+        });
     }
 
     private void addGridRow(GridPane grid, int col, int row, String label, Node control) {
@@ -559,8 +545,7 @@ public class ChannelCard extends VBox {
                 buildSectionHeader("Pre-processing"), new Separator(), preProcessingGrid,
                 buildSectionHeader("Detection Logic"), new Separator(), detectionLogicBox,
                 buildSectionHeader("Cell Geometry"), new Separator(), geometryGrid, includeNuclei, smoothBoundaries,
-                buildSectionHeader("Output"), new Separator(), makeMeasurements
-        );
+                buildSectionHeader("Output"), new Separator(), makeMeasurements);
         return box;
     }
 
@@ -734,8 +719,8 @@ public class ChannelCard extends VBox {
         if (!isUnderAllowedRoot(selectedPath)) {
             boolean copy = Dialogs.showConfirmDialog(
                     "Copy classifier",
-                    "Copy classifier to " + targetDir + "? BraiAn requires classifiers to be stored in the project or its parent folder."
-            );
+                    "Copy classifier to " + targetDir
+                            + "? BraiAn requires classifiers to be stored in the project or its parent folder.");
             if (!copy) {
                 return;
             }
@@ -783,8 +768,8 @@ public class ChannelCard extends VBox {
         if (!isUnderAllowedRoot(selectedPath)) {
             boolean copy = Dialogs.showConfirmDialog(
                     "Copy classifier",
-                    "Copy classifier to " + targetDir + "? BraiAn requires classifiers to be stored in the project or its parent folder."
-            );
+                    "Copy classifier to " + targetDir
+                            + "? BraiAn requires classifiers to be stored in the project or its parent folder.");
             if (!copy) {
                 return;
             }
