@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -27,8 +27,11 @@ import java.util.Map;
 /**
  * Runner for automatically excluding empty atlas regions.
  * <p>
- * This class orchestrates {@link AtlasManager#autoExcludeEmptyRegions(ImageData, List, Map, double)} across different scopes
- * (current image, current project, or a batch of projects) and ensures results are persisted.
+ * This class orchestrates
+ * {@link AtlasManager#autoExcludeEmptyRegions(ImageData, List, Map)}
+ * across different scopes
+ * (current image, current project, or a batch of projects) and ensures results
+ * are persisted.
  */
 public final class AutoExcludeEmptyRegionsRunner {
     private static final Logger logger = LoggerFactory.getLogger(AutoExcludeEmptyRegionsRunner.class);
@@ -39,19 +42,17 @@ public final class AutoExcludeEmptyRegionsRunner {
     /**
      * Runs auto-exclusion on the image currently open in QuPath.
      *
-     * @param qupath the QuPath GUI instance
+     * @param qupath       the QuPath GUI instance
      * @param channelNames the list of channel names to evaluate
-     * @param thresholds per-channel threshold values; if a channel maps to null, an automatic threshold is computed
-     * @param minCoverage minimum coverage in {@code [0,1]} required to keep a region
+     * @param thresholds   per-channel threshold values; if a channel maps to null,
+     *                     an automatic threshold is computed
      * @return the list of excluded regions for the current image
      * @throws IllegalStateException if no image is open
      */
     public static List<ExclusionReport> runCurrentImage(
             QuPathGUI qupath,
             List<String> channelNames,
-            Map<String, Integer> thresholds,
-            double minCoverage
-    ) {
+            Map<String, Integer> thresholds) {
         ImageData<BufferedImage> imageData = qupath.getViewer() != null ? qupath.getViewer().getImageData() : null;
         if (imageData == null) {
             throw new IllegalStateException("No image is currently open.");
@@ -68,13 +69,14 @@ public final class AutoExcludeEmptyRegionsRunner {
         List<ExclusionReport> reports;
         try {
             AtlasManager atlas = new AtlasManager(imageData.getHierarchy());
-            reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds, minCoverage);
+            reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds);
         } catch (Exception e) {
             throw new IllegalStateException("Auto-exclusion failed for " + imageName + ": " + e.getMessage(), e);
         }
 
         List<ExclusionReport> withContext = reports.stream()
-                .map(r -> new ExclusionReport(projectFile, projectName, imageName, r.excludedAnnotationId(), r.regionName(), r.maxCoverage()))
+                .map(r -> new ExclusionReport(projectFile, projectName, imageName, r.excludedAnnotationId(),
+                        r.regionName(), r.maxCoverage()))
                 .toList();
 
         if (entry != null) {
@@ -90,25 +92,24 @@ public final class AutoExcludeEmptyRegionsRunner {
     /**
      * Runs auto-exclusion for every entry of the current QuPath project.
      *
-     * @param qupath the QuPath GUI instance
+     * @param qupath       the QuPath GUI instance
      * @param channelNames the list of channel names to evaluate
-     * @param thresholds per-channel threshold values; if a channel maps to null, an automatic threshold is computed
-     * @param minCoverage minimum coverage in {@code [0,1]} required to keep a region
+     * @param thresholds   per-channel threshold values; if a channel maps to null,
+     *                     an automatic threshold is computed
      * @return a flattened list of excluded regions for all entries
      * @throws IllegalStateException if no project is open
      */
     public static List<ExclusionReport> runProject(
             QuPathGUI qupath,
             List<String> channelNames,
-            Map<String, Integer> thresholds,
-            double minCoverage
-    ) {
+            Map<String, Integer> thresholds) {
         Project<BufferedImage> project = qupath.getProject();
         if (project == null) {
             throw new IllegalStateException("No project open.");
         }
 
-        Path projectFile = Projects.getBaseDirectory(project).toPath().resolve("project." + ProjectIO.DEFAULT_PROJECT_EXTENSION);
+        Path projectFile = Projects.getBaseDirectory(project).toPath()
+                .resolve("project." + ProjectIO.DEFAULT_PROJECT_EXTENSION);
         String projectName = project.getName();
         List<ExclusionReport> allReports = new ArrayList<>();
 
@@ -126,9 +127,10 @@ public final class AutoExcludeEmptyRegionsRunner {
                     continue;
                 }
                 AtlasManager atlas = new AtlasManager(imageData.getHierarchy());
-                List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds, minCoverage);
+                List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds);
                 for (ExclusionReport r : reports) {
-                    allReports.add(new ExclusionReport(projectFile, projectName, entry.getImageName(), r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
+                    allReports.add(new ExclusionReport(projectFile, projectName, entry.getImageName(),
+                            r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
                 }
                 entry.saveImageData(imageData);
             } catch (Exception e) {
@@ -150,21 +152,21 @@ public final class AutoExcludeEmptyRegionsRunner {
     /**
      * Runs auto-exclusion for a list of QuPath projects.
      *
-     * @param qupath the QuPath GUI instance
-     * @param projectFiles list of QuPath project files (e.g. {@code project.qpproj})
+     * @param qupath       the QuPath GUI instance
+     * @param projectFiles list of QuPath project files (e.g.
+     *                     {@code project.qpproj})
      * @param channelNames the list of channel names to evaluate
-     * @param thresholds per-channel threshold values; if a channel maps to null, an automatic threshold is computed
-     * @param minCoverage minimum coverage in {@code [0,1]} required to keep a region
-     * @return a flattened list of excluded regions for all entries across all projects
+     * @param thresholds   per-channel threshold values; if a channel maps to null,
+     *                     an automatic threshold is computed
+     * @return a flattened list of excluded regions for all entries across all
+     *         projects
      * @throws IllegalArgumentException if {@code projectFiles} is null or empty
      */
     public static List<ExclusionReport> runBatch(
             QuPathGUI qupath,
             List<Path> projectFiles,
             List<String> channelNames,
-            Map<String, Integer> thresholds,
-            double minCoverage
-    ) {
+            Map<String, Integer> thresholds) {
         if (projectFiles == null || projectFiles.isEmpty()) {
             throw new IllegalArgumentException("No project files provided.");
         }
@@ -196,9 +198,10 @@ public final class AutoExcludeEmptyRegionsRunner {
                         continue;
                     }
                     AtlasManager atlas = new AtlasManager(imageData.getHierarchy());
-                    List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds, minCoverage);
+                    List<ExclusionReport> reports = atlas.autoExcludeEmptyRegions(imageData, channelNames, thresholds);
                     for (ExclusionReport r : reports) {
-                        allReports.add(new ExclusionReport(projectFile, projectName, entry.getImageName(), r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
+                        allReports.add(new ExclusionReport(projectFile, projectName, entry.getImageName(),
+                                r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
                     }
                     entry.saveImageData(imageData);
                 } catch (Exception e) {
@@ -231,7 +234,8 @@ public final class AutoExcludeEmptyRegionsRunner {
         if (project == null) {
             throw new IllegalStateException("No project open.");
         }
-        Path projectFile = Projects.getBaseDirectory(project).toPath().resolve("project." + ProjectIO.DEFAULT_PROJECT_EXTENSION);
+        Path projectFile = Projects.getBaseDirectory(project).toPath()
+                .resolve("project." + ProjectIO.DEFAULT_PROJECT_EXTENSION);
         String projectName = project.getName();
         List<ExclusionReport> all = new ArrayList<>();
 
@@ -251,11 +255,13 @@ public final class AutoExcludeEmptyRegionsRunner {
                 } else {
                     reports = imageData.getHierarchy().getAnnotationObjects().stream()
                             .filter(o -> o.getPathClass() == AtlasManager.EXCLUDE_CLASSIFICATION)
-                            .map(o -> new ExclusionReport(null, null, entry.getImageName(), o.getID(), o.getName(), Double.NaN))
+                            .map(o -> new ExclusionReport(null, null, entry.getImageName(), o.getID(), o.getName(),
+                                    Double.NaN))
                             .toList();
                 }
                 for (ExclusionReport r : reports) {
-                    all.add(new ExclusionReport(projectFile, projectName, entry.getImageName(), r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
+                    all.add(new ExclusionReport(projectFile, projectName, entry.getImageName(),
+                            r.excludedAnnotationId(), r.regionName(), r.maxCoverage()));
                 }
             } catch (Exception e) {
                 logger.error("Failed to gather exclusions for {}: {}", entry.getImageName(), e.getMessage());

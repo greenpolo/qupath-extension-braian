@@ -21,6 +21,8 @@ import qupath.lib.regions.RegionRequest;
 
 import ij.ImagePlus;
 import ij.process.ImageProcessor;
+import ij.process.ImageStatistics;
+import ij.process.AutoThresholder;
 import ij.gui.Roi;
 import qupath.imagej.tools.IJTools;
 
@@ -71,17 +73,20 @@ public class AtlasManager {
     public final static String um = GeneralTools.micrometerSymbol();
 
     /**
-     * {@link PathClass} used to mark regions/annotations that must be excluded from downstream analysis.
+     * {@link PathClass} used to mark regions/annotations that must be excluded from
+     * downstream analysis.
      */
     public final static PathClass EXCLUDE_CLASSIFICATION = PathClass.fromString("Exclude");
 
     /**
-     * {@link PathClass} used to tag regions originating from the left hemisphere in ABBA atlases.
+     * {@link PathClass} used to tag regions originating from the left hemisphere in
+     * ABBA atlases.
      */
     public final static PathClass ABBA_LEFT = PathClass.fromString("Left");
 
     /**
-     * {@link PathClass} used to tag regions originating from the right hemisphere in ABBA atlases.
+     * {@link PathClass} used to tag regions originating from the right hemisphere
+     * in ABBA atlases.
      */
     public final static PathClass ABBA_RIGHT = PathClass.fromString("Right");
 
@@ -130,7 +135,7 @@ public class AtlasManager {
     }
 
     private static List<String> getDetectionsMeasurements(List<AbstractDetections> detections,
-                                                          ImageData<?> imageData) {
+            ImageData<?> imageData) {
         // TODO: should avoid resorting to QP to get the server metadata
         PixelCalibration cal = imageData.getServerMetadata().getPixelCalibration();
         if (!um.equals(cal.getPixelWidthUnit()) || !um.equals(cal.getPixelHeightUnit()))
@@ -264,9 +269,9 @@ public class AtlasManager {
     // Olivier Burri <https://github.com/lacan> wrote mostly of this function and
     // published under Apache-2.0 license for qupath-extension-biop
     public boolean saveResults(List<AbstractDetections> detections,
-                               File file,
-                               ImageData<BufferedImage> imageData,
-                               ProjectImageEntry<BufferedImage> entry) {
+            File file,
+            ImageData<BufferedImage> imageData,
+            ProjectImageEntry<BufferedImage> entry) {
         if (this.atlasObject.getChildObjects().isEmpty())
             throw new DisruptedAtlasHierarchy(this.atlasObject);
         if (file.exists())
@@ -527,29 +532,48 @@ public class AtlasManager {
     }
 
     /**
-     * Automatically excludes atlas regions that appear empty across all specified channels.
+     * Automatically excludes atlas regions that appear empty based on Otsu
+     * thresholding of the nuclei channel.
      *
-     * <p>A region is excluded if the fraction of pixels at or above the (auto or manual) threshold
-     * is below {@code minCoverage} for <b>every</b> channel.
+     * <p>
+     * A region is excluded if its mean intensity in the nuclei channel is below the
+     * Otsu threshold
+     * (computed on the downsampled nuclei channel).
      *
-     * <p>Exclusion is done by creating a duplicate annotation outside the atlas hierarchy and
+     * <p>
+     * Exclusion is done by creating a duplicate annotation outside the atlas
+     * hierarchy and
      * classifying it as {@link #EXCLUDE_CLASSIFICATION}.
      */
     public List<ExclusionReport> autoExcludeEmptyRegions(
             ImageData<BufferedImage> imageData,
             List<String> channelNames,
-            Map<String, Integer> thresholds,
-            double minCoverage
-    ) {
+            Map<String, Integer> thresholds) {
         Objects.requireNonNull(imageData, "imageData");
         Objects.requireNonNull(channelNames, "channelNames");
         Objects.requireNonNull(thresholds, "thresholds");
 
-        if (minCoverage < 0.0 || minCoverage > 1.0) {
-            throw new IllegalArgumentException("minCoverage must be between 0.0 and 1.0");
-        }
         if (channelNames.isEmpty()) {
             return List.of();
+        }
+
+        String nucleiChannel = channelNames.get(0);
+        int threshold;
+        Integer manualThreshold = thresholds.get(nucleiChannel);
+        if (manualThreshold != null) {
+            threshold = manualThreshold;
+        } else {
+            try {
+                ImageChannelTools channel = new ImageChannelTools(nucleiChannel, imageData);
+                ImageProcessor ip = channel.getImageProcessor(AUTO_THRESHOLD_RESOLUTION_LEVEL);
+                AutoThresholder thresholder = new AutoThresholder();
+                threshold = thresholder.getThreshold(AutoThresholder.Method.Otsu, ip.getHistogram());
+                getLogger().info("Computed Otsu threshold for channel '{}': {}", nucleiChannel, threshold);
+            } catch (Exception e) {
+                getLogger().error("Failed to compute Otsu threshold for channel '{}': {}", nucleiChannel,
+                        e.getMessage());
+                return List.of();
+            }
         }
 
         // Avoid creating duplicate exclusions for regions already excluded
@@ -575,55 +599,40 @@ public class AtlasManager {
                 continue;
             }
 
-            double maxCoverage = 0.0;
-            boolean allBelow = true;
-            for (String channelName : channelNames) {
-                Integer threshold = thresholds.get(channelName);
-                double coverage;
-                try {
-                    ChannelHistogram hist = buildRegionHistogram(imageData, annotation, channelName,
-                            AUTO_THRESHOLD_RESOLUTION_LEVEL);
-                    int resolvedThreshold = threshold != null
-                            ? threshold
-                            : autoThresholdFromHistogram(hist, AUTO_THRESHOLD_SMOOTH_WINDOW_SIZE,
-                                    AUTO_THRESHOLD_PEAK_PROMINENCE, AUTO_THRESHOLD_N_PEAK);
-                    coverage = hist.getCoverageAbove(resolvedThreshold);
-                } catch (Exception e) {
-                    // Conservative fallback: if we can't measure coverage, do not auto-exclude.
-                    getLogger().warn("Failed to compute coverage for region '{}' channel '{}': {}",
-                            annotation.getName(), channelName, e.getMessage());
-                    coverage = 1.0;
-                }
-
-                maxCoverage = Math.max(maxCoverage, coverage);
-                if (coverage >= minCoverage) {
-                    allBelow = false;
-                }
-            }
-
-            if (!allBelow) {
+            double mean;
+            try {
+                mean = getRegionMean(imageData, annotation, nucleiChannel, AUTO_THRESHOLD_RESOLUTION_LEVEL);
+            } catch (Exception e) {
+                getLogger().warn("Failed to compute mean for region '{}' channel '{}': {}",
+                        annotation.getName(), nucleiChannel, e.getMessage());
                 continue;
             }
 
-            PathAnnotationObject exclude = (PathAnnotationObject) PathObjects.createAnnotationObject(annotation.getROI());
-            exclude.setName(annotation.getName());
-            exclude.setPathClass(EXCLUDE_CLASSIFICATION);
-            this.hierarchy.addObject(exclude);
+            if (mean < threshold) {
+                PathAnnotationObject exclude = (PathAnnotationObject) PathObjects
+                        .createAnnotationObject(annotation.getROI());
+                exclude.setName(annotation.getName());
+                exclude.setPathClass(EXCLUDE_CLASSIFICATION);
+                this.hierarchy.addObject(exclude);
 
-            reports.add(new ExclusionReport(
-                    null,
-                    null,
-                    imageData.getServerMetadata().getName(),
-                    exclude.getID(),
-                    annotation.getName(),
-                    maxCoverage
-            ));
+                reports.add(new ExclusionReport(
+                        null,
+                        null,
+                        imageData.getServerMetadata().getName(),
+                        exclude.getID(),
+                        annotation.getName(),
+                        mean));
+            }
         }
         return reports;
     }
 
     /**
-     * Gets currently excluded annotations (classified as {@link #EXCLUDE_CLASSIFICATION}).
+     * Gets currently excluded annotations (classified as
+     * {@link #EXCLUDE_CLASSIFICATION}).
+     *
+     * @param imageData the image data containing the hierarchy
+     * @return a list of exclusion reports for all excluded regions
      */
     public List<ExclusionReport> getExcludedRegions(ImageData<BufferedImage> imageData) {
         Objects.requireNonNull(imageData, "imageData");
@@ -637,17 +646,15 @@ public class AtlasManager {
                         imageName,
                         ann.getID(),
                         ann.getName(),
-                        Double.NaN
-                ))
+                        Double.NaN))
                 .toList();
     }
 
-    private static ChannelHistogram buildRegionHistogram(
+    private static double getRegionMean(
             ImageData<BufferedImage> imageData,
             PathAnnotationObject region,
             String channelName,
-            int resolutionLevel
-    ) throws IOException {
+            int resolutionLevel) throws IOException {
         Objects.requireNonNull(imageData, "imageData");
         Objects.requireNonNull(region, "region");
         Objects.requireNonNull(channelName, "channelName");
@@ -668,36 +675,7 @@ public class AtlasManager {
         if (ijRoi != null) {
             ip.setRoi(ijRoi);
         }
-        return new ChannelHistogram(channelName, ip);
-    }
-
-    private static int autoThresholdFromHistogram(
-            ChannelHistogram histogram,
-            int windowSize,
-            double prominence,
-            int nthPeak
-    ) {
-        int[] peaks = histogram.findHistogramPeaks(windowSize, prominence);
-        int max = histogram.getMaxValue() - windowSize;
-        int firstValid = -1;
-        for (int i = 0; i < peaks.length; i++) {
-            if (peaks[i] >= windowSize && peaks[i] < max) {
-                firstValid = i;
-                break;
-            }
-        }
-        String msg = "Could not automatically determine the channel threshold of '" + histogram.getChannelName() + "' from its histogram!";
-        if (firstValid < 0) {
-            throw new RuntimeException(msg + " No peak was found within the trust-worthy interval");
-        }
-        int shiftedNth = nthPeak + firstValid;
-        if (peaks.length <= shiftedNth) {
-            throw new RuntimeException(msg + " The histogram doesn't have n peaks in [windowSize:end]");
-        }
-        if (peaks[shiftedNth] >= max) {
-            throw new RuntimeException(msg + " There is at least one valid peak, but not n valid peaks");
-        }
-        return peaks[shiftedNth];
+        return ip.getStats().mean;
     }
 
     private void fixMistakenlyExcludedRegion(PathObject mistakenlyExcludedRegion, boolean isSplit) {
