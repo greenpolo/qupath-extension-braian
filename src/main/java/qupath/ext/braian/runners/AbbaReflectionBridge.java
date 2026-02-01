@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -36,10 +36,10 @@ final class AbbaReflectionBridge {
     }
 
     static void loadWarpedAtlasAnnotations(ImageData<BufferedImage> imageData,
-                                           String atlasName,
-                                           String namingProperty,
-                                           boolean splitLeftRight,
-                                           boolean overwrite) {
+            String atlasName,
+            String namingProperty,
+            boolean splitLeftRight,
+            boolean overwrite) {
         resolve();
         if (loadMethod == null) {
             throw new IllegalStateException(getFailureReason());
@@ -92,7 +92,8 @@ final class AbbaReflectionBridge {
         } catch (NoSuchMethodException ignored) {
         }
         try {
-            return atlasTools.getMethod(METHOD_NAME, ImageData.class, String.class, String.class, boolean.class, boolean.class);
+            return atlasTools.getMethod(METHOD_NAME, ImageData.class, String.class, String.class, boolean.class,
+                    boolean.class);
         } catch (NoSuchMethodException ignored) {
             return null;
         }

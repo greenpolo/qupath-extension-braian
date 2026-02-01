@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -21,9 +21,11 @@ public final class ProjectDiscoveryService {
     }
 
     /**
-     * Discover QuPath project files in the immediate subdirectories of {@code rootPath}.
+     * Discover QuPath project files in the immediate subdirectories of
+     * {@code rootPath}.
      *
-     * <p>Discovery rule: include {@code <subdir>/project.<ext>} where {@code <ext>} is
+     * <p>
+     * Discovery rule: include {@code <subdir>/project.<ext>} where {@code <ext>} is
      * {@link ProjectIO#DEFAULT_PROJECT_EXTENSION}.
      *
      * @param rootPath root directory to search

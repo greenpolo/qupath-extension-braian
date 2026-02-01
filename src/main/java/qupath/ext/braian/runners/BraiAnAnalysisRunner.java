@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -42,12 +42,12 @@ import java.util.Optional;
  * <p>
  * This runner loads {@link ProjectsConfig} and orchestrates:
  * <ul>
- *   <li>optional channel renaming</li>
- *   <li>cell detections per channel</li>
- *   <li>per-channel object classification</li>
- *   <li>optional overlaps computation</li>
- *   <li>export of regional results via {@link AtlasManager}</li>
- *   <li>optional pixel classification via {@link PixelClassifierRunner}</li>
+ * <li>optional channel renaming</li>
+ * <li>cell detections per channel</li>
+ * <li>per-channel object classification</li>
+ * <li>optional overlaps computation</li>
+ * <li>export of regional results via {@link AtlasManager}</li>
+ * <li>optional pixel classification via {@link PixelClassifierRunner}</li>
  * </ul>
  */
 public final class BraiAnAnalysisRunner {
@@ -92,10 +92,12 @@ public final class BraiAnAnalysisRunner {
     }
 
     /**
-     * Discovers QuPath projects under {@code rootPath} and runs the pipeline for each.
+     * Discovers QuPath projects under {@code rootPath} and runs the pipeline for
+     * each.
      *
-     * @param qupath the QuPath GUI instance
-     * @param rootPath root directory containing QuPath projects and a shared {@code BraiAn.yml}
+     * @param qupath   the QuPath GUI instance
+     * @param rootPath root directory containing QuPath projects and a shared
+     *                 {@code BraiAn.yml}
      * @throws IllegalArgumentException if {@code rootPath} is invalid
      */
     public static void runBatch(QuPathGUI qupath, Path rootPath) {
@@ -109,11 +111,12 @@ public final class BraiAnAnalysisRunner {
     /**
      * Runs the pipeline for a list of QuPath projects.
      *
-     * @param qupath the QuPath GUI instance
-     * @param rootPath root directory containing a shared {@code BraiAn.yml}
-     * @param projectFiles list of QuPath project files (e.g. {@code project.qpproj})
+     * @param qupath       the QuPath GUI instance
+     * @param rootPath     root directory containing a shared {@code BraiAn.yml}
+     * @param projectFiles list of QuPath project files (e.g.
+     *                     {@code project.qpproj})
      * @throws IllegalArgumentException if {@code rootPath} is invalid
-     * @throws IllegalStateException if {@code projectFiles} is null or empty
+     * @throws IllegalStateException    if {@code projectFiles} is null or empty
      */
     public static void runBatch(QuPathGUI qupath, Path rootPath, List<Path> projectFiles) {
         if (rootPath == null || !Files.isDirectory(rootPath)) {
@@ -246,7 +249,8 @@ public final class BraiAnAnalysisRunner {
                     }
                     try {
                         List<AbstractDetections> otherDetections = new ArrayList<>(others);
-                        overlaps.add(new OverlappingDetections(control, otherDetections, true, hierarchy, project, qupath));
+                        overlaps.add(
+                                new OverlappingDetections(control, otherDetections, true, hierarchy, project, qupath));
                     } catch (NoCellContainersFoundException e) {
                         logger.warn("Unable to compute overlaps: {}", e.getMessage());
                     }

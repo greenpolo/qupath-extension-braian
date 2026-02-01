@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 OpenAI Assistant
+// SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -37,7 +37,8 @@ import java.util.Optional;
 /**
  * Runner for pixel classifier execution and results export.
  * <p>
- * This class applies configured pixel classifiers to atlas regions and optionally exports measurements
+ * This class applies configured pixel classifiers to atlas regions and
+ * optionally exports measurements
  * to TSV files.
  */
 public final class PixelClassifierRunner {
@@ -47,24 +48,28 @@ public final class PixelClassifierRunner {
     }
 
     /**
-     * Runs configured pixel classifiers for an image and optionally exports results.
+     * Runs configured pixel classifiers for an image and optionally exports
+     * results.
      *
-     * @param qupath the QuPath GUI instance
-     * @param imageData the image to process
-     * @param project the current project; required for export
-     * @param entry the project entry corresponding to {@code imageData}; required for export
-     * @param config the BraiAn configuration
-     * @param detections optional list of detections used to determine which atlas regions to include
-     * @param export if true, exports results to the project {@code results/} directory
+     * @param qupath     the QuPath GUI instance
+     * @param imageData  the image to process
+     * @param project    the current project; required for export
+     * @param entry      the project entry corresponding to {@code imageData};
+     *                   required for export
+     * @param config     the BraiAn configuration
+     * @param detections optional list of detections used to determine which atlas
+     *                   regions to include
+     * @param export     if true, exports results to the project {@code results/}
+     *                   directory
      * @throws IllegalArgumentException if {@code imageData} is null
      */
     public static void runPixelClassifiers(QuPathGUI qupath,
-                                            ImageData<BufferedImage> imageData,
-                                            Project<BufferedImage> project,
-                                            ProjectImageEntry<BufferedImage> entry,
-                                            ProjectsConfig config,
-                                            List<? extends AbstractDetections> detections,
-                                            boolean export) {
+            ImageData<BufferedImage> imageData,
+            Project<BufferedImage> project,
+            ProjectImageEntry<BufferedImage> entry,
+            ProjectsConfig config,
+            List<? extends AbstractDetections> detections,
+            boolean export) {
         if (imageData == null) {
             throw new IllegalArgumentException("ImageData is required for pixel classification.");
         }
@@ -143,7 +148,8 @@ public final class PixelClassifierRunner {
 
             hierarchy.getSelectionModel().clearSelection();
             hierarchy.getSelectionModel().setSelectedObjects(targetRegions, null);
-            boolean applied = PixelClassifierTools.addMeasurementsToSelectedObjects(imageData, classifier, measurementId);
+            boolean applied = PixelClassifierTools.addMeasurementsToSelectedObjects(imageData, classifier,
+                    measurementId);
             if (applied && !measurementIds.contains(measurementId)) {
                 measurementIds.add(measurementId);
             }
@@ -166,10 +172,10 @@ public final class PixelClassifierRunner {
     }
 
     private static void exportResults(Path projectDir,
-                                      ProjectImageEntry<BufferedImage> entry,
-                                      ImageData<BufferedImage> imageData,
-                                      List<PathObject> regions,
-                                      List<String> measurementIds) {
+            ProjectImageEntry<BufferedImage> entry,
+            ImageData<BufferedImage> imageData,
+            List<PathObject> regions,
+            List<String> measurementIds) {
         ResultsTable results = new ResultsTable();
         ObservableMeasurementTableData ob = new ObservableMeasurementTableData();
         ob.setImageData(imageData, regions);
