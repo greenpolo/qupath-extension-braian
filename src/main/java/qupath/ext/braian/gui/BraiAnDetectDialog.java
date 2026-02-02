@@ -138,7 +138,7 @@ public class BraiAnDetectDialog {
         this.stage = new Stage();
         this.stage.setTitle("BraiAnDetect Pipeline Manager");
         this.stage.initOwner(qupath.getStage());
-        this.stage.setWidth(980);
+        this.stage.setWidth(600);
         this.stage.setHeight(820);
         this.batchReady.bind(batchRootField.textProperty().isNotEmpty());
         this.stage.setOnHidden(event -> {
@@ -542,7 +542,7 @@ public class BraiAnDetectDialog {
         BorderPane layout = new BorderPane();
         layout.setTop(scopeSection);
         layout.setCenter(scrollPane);
-        return new Tab("Detection", layout);
+        return new Tab("Cell Detection", layout);
     }
 
     private void handleImportCurrent() {
