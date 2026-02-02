@@ -101,7 +101,10 @@ public class BraiAnExtension implements QuPathExtension {
 
         for (String scriptPath : scripts)
             try (InputStream stream = getClass().getClassLoader().getResourceAsStream(scriptPath)) {
-                assert stream != null;
+                if (stream == null) {
+                    logger.warn("Missing script resource: {}", scriptPath);
+                    continue;
+                }
                 String scriptName = new File(scriptPath).getName();
                 String script = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
                 MenuTools.addMenuItems(
