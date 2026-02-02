@@ -305,8 +305,10 @@ public class ChannelCard extends VBox {
         pixelClassifierPane.managedProperty().bind(enablePixelClassification.selectedProperty());
         pixelClassifierPane.visibleProperty().bind(enablePixelClassification.selectedProperty());
 
-        getChildren().addAll(header, enableCellDetection, cellDetectionSection, enablePixelClassification,
-                pixelClassifierPane);
+        HBox modeCheckboxes = new HBox(24, enableCellDetection, enablePixelClassification);
+        modeCheckboxes.setAlignment(Pos.CENTER_LEFT);
+
+        getChildren().addAll(header, modeCheckboxes, cellDetectionSection, pixelClassifierPane);
     }
 
     /**
