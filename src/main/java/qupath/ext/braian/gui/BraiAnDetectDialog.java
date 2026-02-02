@@ -91,6 +91,7 @@ public class BraiAnDetectDialog {
     private final TextField batchRootField = new TextField();
     private final BooleanProperty importBatchMode = new SimpleBooleanProperty(false);
     private final TextField importBatchRootField = new TextField();
+    private final TextField importAtlasNameField = new TextField();
     private final PauseTransition saveDebounce = new PauseTransition(Duration.millis(500));
     private final ExecutorService saveExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService runExecutor = Executors.newSingleThreadExecutor();
@@ -284,11 +285,24 @@ public class BraiAnDetectDialog {
             }
         });
 
+        Label atlasNameLabel = new Label("Atlas Name (Auto-detected):");
+        importAtlasNameField.setEditable(false);
+        importAtlasNameField.setFocusTraversable(false);
+        importAtlasNameField.setPromptText("No atlas detected");
+        Button refreshAtlasButton = new Button("Refresh");
+        refreshAtlasButton.setTooltip(new Tooltip("Re-scan projects for the imported atlas root annotation."));
+        refreshAtlasButton.disableProperty().bind(running);
+        refreshAtlasButton.setOnAction(event -> refreshAtlasDetection());
+        HBox atlasRow = new HBox(8, importAtlasNameField, refreshAtlasButton);
+        atlasRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(importAtlasNameField, Priority.ALWAYS);
+
         Label warningLabel = new Label(
                 "Note: Importing atlas annotations will clear all existing objects in the hierarchy.");
         warningLabel.getStyleClass().add("warning");
 
-        importAtlasPanel.getChildren().addAll(importTitle, importButton, warningLabel);
+        importAtlasPanel.getChildren().addAll(importTitle, importButton, atlasNameLabel, atlasRow,
+                warningLabel);
 
         VBox projectListPanel = buildProjectListPanel(importBatchMode);
 
@@ -546,9 +560,10 @@ public class BraiAnDetectDialog {
                 running,
                 this::handlePreview,
                 this::handleRun,
-                this::scheduleConfigSave,
+                this::handleConfigChanged,
                 this::resolveConfigRoot,
                 this::resolveProjectDirectory,
+                qupath::getProject,
                 this::resolveImageData);
         ScrollPane scrollPane = new ScrollPane(experimentPane);
         scrollPane.setFitToWidth(true);
@@ -752,6 +767,7 @@ public class BraiAnDetectDialog {
         if (experimentPane != null) {
             experimentPane.setConfig(loadedConfig);
         }
+        updateAtlasNameFields();
         if (!Files.exists(path)) {
             saveConfigAsync(ProjectsConfig.toYaml(loadedConfig));
         }
@@ -766,6 +782,26 @@ public class BraiAnDetectDialog {
             return;
         }
         loadConfig(resolved);
+    }
+
+    private void handleConfigChanged() {
+        scheduleConfigSave();
+        updateAtlasNameFields();
+    }
+
+    private void refreshAtlasDetection() {
+        if (experimentPane != null) {
+            experimentPane.refreshAtlasDetection();
+        }
+    }
+
+    private void updateAtlasNameFields() {
+        if (config == null) {
+            importAtlasNameField.setText("");
+            return;
+        }
+        String atlasName = config.getAtlasName();
+        importAtlasNameField.setText(atlasName == null ? "" : atlasName);
     }
 
     private Path resolveConfigPath() {

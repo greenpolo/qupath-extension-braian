@@ -5,6 +5,7 @@
 
 package qupath.ext.braian.gui;
 
+import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
@@ -29,7 +30,12 @@ import qupath.ext.braian.config.ProjectsConfig;
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
 import qupath.lib.gui.QuPathGUI;
 import qupath.lib.images.ImageData;
+import qupath.lib.objects.PathAnnotationObject;
+import qupath.lib.projects.Project;
+import qupath.lib.projects.ProjectImageEntry;
 
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +62,7 @@ public class ExperimentPane extends VBox {
     private final Runnable onConfigChanged;
     private final Supplier<Path> configRootSupplier;
     private final Supplier<Path> projectDirSupplier;
+    private final Supplier<Project<BufferedImage>> projectSupplier;
     private final Supplier<ImageData<?>> imageDataSupplier;
     private final VBox channelStack = new VBox(12);
     private final TextField classForDetectionsField = new TextField();
@@ -69,6 +76,8 @@ public class ExperimentPane extends VBox {
     private boolean isUpdating = false;
 
     private static final String HELP_URL_CROSS_CHANNEL = "https://silvalab.codeberg.page/BraiAn/image-analysis/#:~:text=Find%20co%2Dlabelled%20detections";
+    private static final String DEFAULT_ATLAS = "allen_mouse_10um_java";
+    private static final String ROOT_ANNOTATION_NAME = "Root";
 
     /**
      * Creates the experiment pane.
@@ -89,6 +98,7 @@ public class ExperimentPane extends VBox {
      * @param configRootSupplier     supplier for the directory containing
      *                               configuration resources
      * @param projectDirSupplier     supplier for the current project directory
+     * @param projectSupplier        supplier for the current QuPath project
      * @param imageDataSupplier      supplier for the current {@link ImageData}
      */
     public ExperimentPane(ProjectsConfig config,
@@ -103,6 +113,7 @@ public class ExperimentPane extends VBox {
             Runnable onConfigChanged,
             Supplier<Path> configRootSupplier,
             Supplier<Path> projectDirSupplier,
+            Supplier<Project<BufferedImage>> projectSupplier,
             Supplier<ImageData<?>> imageDataSupplier) {
         this.channelNames = channelNames;
         this.availableImageChannels = availableImageChannels;
@@ -119,6 +130,7 @@ public class ExperimentPane extends VBox {
         this.config = config;
         this.configRootSupplier = configRootSupplier;
         this.projectDirSupplier = projectDirSupplier;
+        this.projectSupplier = projectSupplier;
         this.imageDataSupplier = imageDataSupplier;
 
         setSpacing(16);
@@ -165,7 +177,7 @@ public class ExperimentPane extends VBox {
                 return;
             }
             String trimmed = value != null ? value.trim() : "";
-            config.setAtlasName(trimmed.isEmpty() ? "allen_mouse_10um_java" : trimmed);
+            config.setAtlasName(trimmed.isEmpty() ? DEFAULT_ATLAS : trimmed);
             notifyConfigChanged();
         });
 
@@ -203,9 +215,16 @@ public class ExperimentPane extends VBox {
         Hyperlink crossChannelHelp = buildHelpLink(HELP_URL_CROSS_CHANNEL);
         crossChannelRow.getChildren().addAll(crossChannelLabel, crossChannelHelp);
 
+        Button refreshAtlasButton = new Button("Refresh");
+        refreshAtlasButton.setOnAction(event -> refreshAtlasDetection());
+        refreshAtlasButton.disableProperty().bind(running);
+        HBox atlasRow = new HBox(8, atlasNameField, refreshAtlasButton);
+        atlasRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(atlasNameField, Priority.ALWAYS);
+
         section.getChildren().addAll(header,
                 new Label("Region Filter:"), classForDetectionsField,
-                new Label("Atlas Name (Auto-detected):"), atlasNameField,
+                new Label("Atlas Name (Auto-detected):"), atlasRow,
                 crossChannelRow, detectionsCheckRow);
         return section;
     }
@@ -241,7 +260,7 @@ public class ExperimentPane extends VBox {
     private void refreshFromConfig() {
         isUpdating = true;
         classForDetectionsField.setText(Optional.ofNullable(config.getClassForDetections()).orElse(""));
-        atlasNameField.setText(Optional.ofNullable(config.getAtlasName()).orElse("allen_mouse_10um_java"));
+        atlasNameField.setText(Optional.ofNullable(config.getAtlasName()).orElse(DEFAULT_ATLAS));
         DetectionsCheckConfig detectionsCheck = config.getDetectionsCheck();
         detectionsCheckBox.setSelected(detectionsCheck.getApply());
         rebuildChannelCards();
@@ -367,21 +386,140 @@ public class ExperimentPane extends VBox {
     }
 
     /**
-     * Tries to detect the atlas name from the current image hierarchy and updates
-     * the configuration.
+     * Refreshes atlas auto-detection, ignoring any currently set atlas name.
+     */
+    public void refreshAtlasDetection() {
+        detectAtlas(true);
+    }
+
+    /**
+     * Tries to detect the atlas name from the current image, falling back to
+     * scanning project entries for an imported atlas root annotation.
      */
     public void autoDetectAtlas() {
-        ImageData<?> imageData = imageDataSupplier.get();
-        if (imageData == null) {
+        detectAtlas(false);
+    }
+
+    private void detectAtlas(boolean force) {
+        if (!force && !shouldAutoDetect()) {
             return;
         }
-        var root = imageData.getHierarchy().getRootObject();
-        if (root != null && root.getPathClass() != null) {
-            String detected = root.getPathClass().getName();
-            if (config.getAtlasName() == null || config.getAtlasName().equals("allen_mouse_10um_java")) {
-                config.setAtlasName(detected);
-                notifyConfigChanged();
+
+        String detected = findAtlasFromImage(imageDataSupplier.get());
+        if (detected != null) {
+            if (Platform.isFxApplicationThread()) {
+                applyDetectedAtlas(detected, force);
+            } else {
+                Platform.runLater(() -> applyDetectedAtlas(detected, force));
+            }
+            return;
+        }
+
+        Project<BufferedImage> project = projectSupplier.get();
+        if (project == null) {
+            return;
+        }
+
+        if (Platform.isFxApplicationThread()) {
+            Thread worker = new Thread(() -> {
+                String found = findAtlasFromProject(project);
+                if (found != null) {
+                    Platform.runLater(() -> applyDetectedAtlas(found, force));
+                }
+            }, "braian-atlas-detect");
+            worker.setDaemon(true);
+            worker.start();
+            return;
+        }
+
+        String found = findAtlasFromProject(project);
+        if (found != null) {
+            if (Platform.isFxApplicationThread()) {
+                applyDetectedAtlas(found, force);
+            } else {
+                Platform.runLater(() -> applyDetectedAtlas(found, force));
             }
         }
+    }
+
+    private boolean shouldAutoDetect() {
+        String current = config.getAtlasName();
+        if (current == null || current.isBlank()) {
+            return true;
+        }
+        if (DEFAULT_ATLAS.equals(current)) {
+            return true;
+        }
+        return "image".equalsIgnoreCase(current);
+    }
+
+    private void applyDetectedAtlas(String detected, boolean force) {
+        if (detected == null || detected.isBlank()) {
+            return;
+        }
+        if (!force && !shouldAutoDetect()) {
+            return;
+        }
+        String current = config.getAtlasName();
+        if (detected.equals(current)) {
+            return;
+        }
+        boolean previousUpdating = isUpdating;
+        isUpdating = true;
+        atlasNameField.setText(detected);
+        isUpdating = previousUpdating;
+        config.setAtlasName(detected);
+        notifyConfigChanged();
+    }
+
+    private String findAtlasFromImage(ImageData<?> imageData) {
+        if (imageData == null) {
+            return null;
+        }
+        for (var annotation : imageData.getHierarchy().getAnnotationObjects()) {
+            if (!(annotation instanceof PathAnnotationObject)) {
+                continue;
+            }
+            String name = annotation.getName();
+            // Use exact case-sensitive match for "Root" to align with AtlasManager.search()
+            if (!ROOT_ANNOTATION_NAME.equals(name)) {
+                continue;
+            }
+            if (annotation.getPathClass() == null) {
+                continue;
+            }
+            String atlasName = annotation.getPathClass().toString();
+            if (atlasName != null && !atlasName.isBlank()) {
+                return atlasName;
+            }
+        }
+        return null;
+    }
+
+    private String findAtlasFromProject(Project<BufferedImage> project) {
+        if (project == null) {
+            return null;
+        }
+        for (ProjectImageEntry<BufferedImage> entry : project.getImageList()) {
+            ImageData<BufferedImage> imageData;
+            try {
+                imageData = entry.readImageData();
+            } catch (IOException e) {
+                continue;
+            }
+            try {
+                String detected = findAtlasFromImage(imageData);
+                if (detected != null) {
+                    return detected;
+                }
+            } finally {
+                try {
+                    imageData.getServer().close();
+                } catch (Exception e) {
+                    // Best effort cleanup.
+                }
+            }
+        }
+        return null;
     }
 }
