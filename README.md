@@ -36,6 +36,29 @@ The extensions exposes a proper library [API](https://carlocastoldi.github.io/qu
 
 Where to start from, though? Reading [this script](https://github.com/carlocastoldi/qupath-extension-braian/blob/master/src/main/resources/scripts/compute_classify_overlap_export_exclude_detections.groovy) and the associated [config file](https://github.com/carlocastoldi/qupath-extension-braian/blob/master/BraiAn.yml) is a good start!
 
+## GUI Usage
+
+BraiAnDetect now includes a full **Pipeline Manager** GUI, accessible via `Extensions > BraiAn` in QuPath. This allows you to configure and run the entire BraiAn pipeline without writing any scripts.
+
+### Project Preparation Tab
+- **ABBA Import**: Import brain atlas annotations from ABBA with scope selection (single image, current project, or entire experiment batch).
+- **Auto-Exclude Empty Regions**: Automatically flag brain regions with low signal intensity for exclusion based on channel modes and a configurable threshold multiplier.
+- **Review Exclusions**: Interactive table to navigate and review excluded regions with percentile statistics.
+- **Classifier Training**: Generate sample images for training object classifiers.
+
+### Cell Detection Tab
+- **Per-Channel Configuration**: Add multiple detection channels, each with its own parameters.
+- **Watershed Detection**: All QuPath cell detection parameters are exposed with inline default value indicators (e.g., `[default: 0.5]`).
+- **Auto-Threshold**: Histogram-based threshold calculation with a "Find Threshold" preview button.
+- **Object Classifiers**: Apply machine-learning classifiers globally or to specific brain regions.
+- **Pixel Classifiers**: Run pixel classifiers with region-specific measurement output.
+- **Co-localization**: Configure cross-channel overlap detection.
+
+### Batch Mode
+Enable batch mode to discover and process multiple QuPath projects from a root folder simultaneously.
+
+
+
 ## Citing
 
 If you use BraiAn in your work, please cite the paper below, currently in pre-print:
