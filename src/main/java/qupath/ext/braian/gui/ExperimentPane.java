@@ -279,7 +279,8 @@ public class ExperimentPane extends VBox {
                 projectDirSupplier,
                 this::notifyConfigChanged,
                 this::refreshChannelNames,
-                () -> isUpdating);
+                () -> isUpdating,
+                imageDataSupplier);
         card.setOnRemove(() -> removeChannelCard(card, channelConfig));
         channelStack.getChildren().add(card);
     }

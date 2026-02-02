@@ -34,8 +34,10 @@ import qupath.ext.braian.config.ChannelClassifierConfig;
 import qupath.ext.braian.config.ChannelDetectionsConfig;
 import qupath.ext.braian.config.PixelClassifierConfig;
 import qupath.ext.braian.config.WatershedCellDetectionConfig;
+import qupath.ext.braian.ImageChannelTools;
 import qupath.fx.dialogs.Dialogs;
 import qupath.lib.gui.QuPathGUI;
+import qupath.lib.images.ImageData;
 
 import java.io.File;
 import java.io.IOException;
@@ -65,6 +67,7 @@ public class ChannelCard extends VBox {
     private final Runnable onConfigChanged;
     private final Runnable onChannelNameChanged;
     private final BooleanSupplier isUpdatingSupplier;
+    private final Supplier<ImageData<?>> imageDataSupplier;
     private final VBox classifierList = new VBox(6);
     private final VBox pixelClassifierList = new VBox(6);
     private final List<ChannelClassifierConfig> classifiers;
@@ -112,6 +115,7 @@ public class ChannelCard extends VBox {
      * @param onChannelNameChanged callback invoked when the channel name is changed
      * @param isUpdatingSupplier   supplier indicating whether UI is being updated
      *                             programmatically
+     * @param imageDataSupplier    supplier for the current ImageData
      */
     public ChannelCard(ChannelDetectionsConfig config,
             List<String> availableChannels,
@@ -120,7 +124,8 @@ public class ChannelCard extends VBox {
             Supplier<Path> projectDirSupplier,
             Runnable onConfigChanged,
             Runnable onChannelNameChanged,
-            BooleanSupplier isUpdatingSupplier) {
+            BooleanSupplier isUpdatingSupplier,
+            Supplier<ImageData<?>> imageDataSupplier) {
         this.config = config;
         this.params = config.getParameters();
         this.owner = owner;
@@ -129,6 +134,7 @@ public class ChannelCard extends VBox {
         this.onConfigChanged = onConfigChanged;
         this.onChannelNameChanged = onChannelNameChanged;
         this.isUpdatingSupplier = isUpdatingSupplier;
+        this.imageDataSupplier = imageDataSupplier;
         this.classifiers = new ArrayList<>(Optional.ofNullable(config.getClassifiers()).orElse(List.of()));
         this.pixelClassifiers = new ArrayList<>(Optional.ofNullable(config.getPixelClassifiers()).orElse(List.of()));
 
@@ -209,7 +215,11 @@ public class ChannelCard extends VBox {
         });
         addTooltip(thresholdSpinner, TOOLTIP_THRESHOLD);
 
-        VBox manualBox = new VBox(6, new Label("Threshold"), thresholdSpinner);
+        Label manualDefault = new Label("[default: 100]");
+        manualDefault.setStyle("-fx-text-fill: #888; -fx-font-size: 10px;");
+        HBox thresholdControlBox = new HBox(8, thresholdSpinner, manualDefault);
+        thresholdControlBox.setAlignment(Pos.CENTER_LEFT);
+        VBox manualBox = new VBox(6, new Label("Threshold"), thresholdControlBox);
 
         VBox autoBox = buildAutoThresholdBox();
 
@@ -254,7 +264,7 @@ public class ChannelCard extends VBox {
             notifyConfigChanged();
         });
         addTooltip(pixelSize, TOOLTIP_PIXEL_SIZE);
-        addGridRow(standardGrid, 0, 3, "Pixel size (µm)", pixelSize);
+        addGridRowWithDefault(standardGrid, 0, 3, "Pixel size (µm)", "0.5", pixelSize);
 
         Spinner<Double> minArea = createDoubleSpinner(0.0, 5000.0, 1.0, params.getMinAreaMicrons());
         minArea.valueProperty().addListener((obs, oldValue, value) -> {
@@ -274,8 +284,8 @@ public class ChannelCard extends VBox {
             notifyConfigChanged();
         });
         addTooltip(maxArea, TOOLTIP_MAX_AREA);
-        addGridRow(standardGrid, 0, 4, "Min area", minArea);
-        addGridRow(standardGrid, 0, 5, "Max area", maxArea);
+        addGridRowWithDefault(standardGrid, 0, 4, "Min area (µm²)", "10", minArea);
+        addGridRowWithDefault(standardGrid, 0, 5, "Max area (µm²)", "400", maxArea);
 
         VBox standardSection = new VBox(8, new Label("Standard parameters"), standardGrid);
 
@@ -314,6 +324,18 @@ public class ChannelCard extends VBox {
         grid.add(lbl, col, row);
         grid.add(control, col + 1, row);
         GridPane.setHgrow(control, Priority.ALWAYS);
+    }
+
+    private void addGridRowWithDefault(GridPane grid, int col, int row, String label, String defaultVal, Node control) {
+        Label lbl = new Label(label);
+        Label defLabel = new Label("[default: " + defaultVal + "]");
+        defLabel.setStyle("-fx-text-fill: #888; -fx-font-size: 10px;");
+        HBox controlBox = new HBox(8, control, defLabel);
+        controlBox.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(control, Priority.ALWAYS);
+        grid.add(lbl, col, row);
+        grid.add(controlBox, col + 1, row);
+        GridPane.setHgrow(controlBox, Priority.ALWAYS);
     }
 
     private void addTooltip(Node node, String text) {
@@ -424,11 +446,46 @@ public class ChannelCard extends VBox {
         GridPane grid = new GridPane();
         grid.setHgap(12);
         grid.setVgap(8);
-        addGridRow(grid, 0, 0, "Resolution", resolutionLevel);
-        addGridRow(grid, 0, 1, "Smooth window", smoothWindowSize);
-        addGridRow(grid, 0, 2, "Peak prominence", peakProminence);
-        addGridRow(grid, 0, 3, "Peak index", nPeak);
-        return new VBox(8, new Label("Auto-threshold parameters"), grid);
+        addGridRowWithDefault(grid, 0, 0, "Resolution level", "4", resolutionLevel);
+        addGridRowWithDefault(grid, 0, 1, "Smooth window", "15", smoothWindowSize);
+        addGridRowWithDefault(grid, 0, 2, "Peak prominence", "100", peakProminence);
+        addGridRowWithDefault(grid, 0, 3, "Peak index", "1", nPeak);
+
+        Label thresholdResultLabel = new Label();
+        thresholdResultLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #1A73E8;");
+
+        Button findThresholdButton = new Button("Find Threshold");
+        findThresholdButton.setTooltip(new Tooltip(
+                "Calculate the automatic threshold for the current image using the parameters above."));
+        findThresholdButton.setOnAction(event -> {
+            String channelName = config.getName();
+            if (channelName == null || channelName.isBlank()) {
+                Dialogs.showErrorMessage("Find Threshold", "Please select a channel name first.");
+                return;
+            }
+            ImageData<?> imageData = imageDataSupplier.get();
+            if (imageData == null) {
+                Dialogs.showErrorMessage("Find Threshold", "No image is currently open.");
+                return;
+            }
+            AutoThresholdParmameters currentParams = ensureAutoThreshold();
+            try {
+                @SuppressWarnings("unchecked")
+                ImageData<java.awt.image.BufferedImage> typedImageData = (ImageData<java.awt.image.BufferedImage>) imageData;
+                ImageChannelTools channel = new ImageChannelTools(channelName, typedImageData);
+                int threshold = WatershedCellDetectionConfig.findThreshold(channel, currentParams);
+                thresholdResultLabel.setText("Threshold: " + threshold);
+            } catch (Exception e) {
+                Dialogs.showErrorMessage("Find Threshold",
+                        "Could not compute threshold: " + e.getMessage());
+                thresholdResultLabel.setText("");
+            }
+        });
+
+        HBox thresholdRow = new HBox(10, findThresholdButton, thresholdResultLabel);
+        thresholdRow.setAlignment(Pos.CENTER_LEFT);
+
+        return new VBox(8, new Label("Auto-threshold parameters"), grid, thresholdRow);
     }
 
     private VBox buildAdvancedSection() {
@@ -530,16 +587,16 @@ public class ChannelCard extends VBox {
         GridPane preProcessingGrid = new GridPane();
         preProcessingGrid.setHgap(12);
         preProcessingGrid.setVgap(8);
-        addGridRow(preProcessingGrid, 0, 0, "Median radius", medianRadius);
-        addGridRow(preProcessingGrid, 0, 1, "Sigma", sigma);
-        addGridRow(preProcessingGrid, 0, 2, "Background radius", backgroundRadius);
+        addGridRowWithDefault(preProcessingGrid, 0, 0, "Median radius (µm)", "0", medianRadius);
+        addGridRowWithDefault(preProcessingGrid, 0, 1, "Sigma (µm)", "1.5", sigma);
+        addGridRowWithDefault(preProcessingGrid, 0, 2, "Background radius (µm)", "8", backgroundRadius);
 
         VBox detectionLogicBox = new VBox(6, backgroundReconstruction, watershed);
 
         GridPane geometryGrid = new GridPane();
         geometryGrid.setHgap(12);
         geometryGrid.setVgap(8);
-        addGridRow(geometryGrid, 0, 0, "Cell expansion (µm)", cellExpansion);
+        addGridRowWithDefault(geometryGrid, 0, 0, "Cell expansion (µm)", "5", cellExpansion);
 
         VBox box = new VBox(10,
                 buildSectionHeader("Pre-processing"), new Separator(), preProcessingGrid,
