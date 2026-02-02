@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 package qupath.ext.braian.runners;
 
 import ij.measure.ResultsTable;
+import javafx.application.Platform;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qupath.ext.braian.AbstractDetections;
@@ -33,6 +35,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 
 /**
  * Runner for pixel classifier execution and results export.
@@ -146,15 +150,11 @@ public final class PixelClassifierRunner {
                 continue;
             }
 
-            hierarchy.getSelectionModel().clearSelection();
-            hierarchy.getSelectionModel().setSelectedObjects(targetRegions, null);
-            boolean applied = PixelClassifierTools.addMeasurementsToSelectedObjects(imageData, classifier,
-                    measurementId);
+            boolean applied = applyPixelClassifierOnFxThread(imageData, classifier, measurementId, targetRegions);
             if (applied && !measurementIds.contains(measurementId)) {
                 measurementIds.add(measurementId);
             }
         }
-        hierarchy.getSelectionModel().clearSelection();
 
         if (!export || project == null || entry == null || measurementIds.isEmpty()) {
             return;
@@ -266,5 +266,40 @@ public final class PixelClassifierRunner {
             return "image";
         }
         return sanitized;
+    }
+
+    private static boolean applyPixelClassifierOnFxThread(ImageData<BufferedImage> imageData,
+            PixelClassifier classifier,
+            String measurementId,
+            List<PathObject> targetRegions) {
+        if (Platform.isFxApplicationThread()) {
+            return applyPixelClassifier(imageData, classifier, measurementId, targetRegions);
+        }
+        FutureTask<Boolean> task = new FutureTask<>(
+                () -> applyPixelClassifier(imageData, classifier, measurementId, targetRegions));
+        Platform.runLater(task);
+        try {
+            return task.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Pixel classifier execution interrupted for {}", measurementId, e);
+        } catch (ExecutionException e) {
+            logger.warn("Pixel classifier execution failed for {}", measurementId, e.getCause());
+        }
+        return false;
+    }
+
+    private static boolean applyPixelClassifier(ImageData<BufferedImage> imageData,
+            PixelClassifier classifier,
+            String measurementId,
+            List<PathObject> targetRegions) {
+        var hierarchy = imageData.getHierarchy();
+        hierarchy.getSelectionModel().clearSelection();
+        hierarchy.getSelectionModel().setSelectedObjects(targetRegions, null);
+        try {
+            return PixelClassifierTools.addMeasurementsToSelectedObjects(imageData, classifier, measurementId);
+        } finally {
+            hierarchy.getSelectionModel().clearSelection();
+        }
     }
 }

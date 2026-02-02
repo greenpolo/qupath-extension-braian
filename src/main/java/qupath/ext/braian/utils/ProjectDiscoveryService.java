@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 package qupath.ext.braian.utils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import qupath.lib.projects.ProjectIO;
 
 import java.io.IOException;
@@ -17,6 +20,8 @@ import java.util.List;
  * Utilities for discovering QuPath project files on disk.
  */
 public final class ProjectDiscoveryService {
+    private static final Logger logger = LoggerFactory.getLogger(ProjectDiscoveryService.class);
+
     private ProjectDiscoveryService() {
     }
 
@@ -49,6 +54,7 @@ public final class ProjectDiscoveryService {
                         }
                     });
         } catch (IOException e) {
+            logger.warn("Failed to discover projects under {}", rootPath, e);
             return List.of();
         }
 

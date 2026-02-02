@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 package qupath.ext.braian.config;
 
-import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.error.YAMLException;
@@ -24,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static qupath.ext.braian.BraiAnExtension.getLogger;
@@ -39,7 +41,7 @@ public class ProjectsConfig {
     /**
      * Reads a BraiAn configuration file
      * 
-     * @param project the current QuPath project
+     * @param project      the current QuPath project
      * @param yamlFileName the name of the file, not the path.
      *                     It will then search it first into the project's directory
      *                     and, if it wasn't there, in its parent directory.
@@ -61,8 +63,10 @@ public class ProjectsConfig {
      *
      * @param filePath the path to the YAML configuration file
      * @return an instance of {@link ProjectsConfig}
-     * @throws IOException if it found the config file, but it had problems while reading it
-     * @throws YAMLException if it found and read the config file, but it was badly formatted
+     * @throws IOException   if it found the config file, but it had problems while
+     *                       reading it
+     * @throws YAMLException if it found and read the config file, but it was badly
+     *                       formatted
      * @see #read(Project, String)
      */
     public static ProjectsConfig read(Path filePath) throws IOException, YAMLException {
@@ -70,8 +74,26 @@ public class ProjectsConfig {
         String configStream = Files.readString(filePath, StandardCharsets.UTF_8);
 
         try {
-            Constructor c = new Constructor(ProjectsConfig.class, new LoaderOptions());
-            return new Yaml(c).load(configStream);
+            Constructor constructor = new Constructor(ProjectsConfig.class, new LoaderOptions());
+            PropertyUtils propertyUtils = new PropertyUtils() {
+                @Override
+                public Property getProperty(Class<?> type, String name, BeanAccess bAccess) {
+                    boolean known = true;
+                    try {
+                        Map<String, Property> properties = getPropertiesMap(type, bAccess);
+                        known = properties.containsKey(name);
+                    } catch (Exception e) {
+                        known = true;
+                    }
+                    if (!known) {
+                        getLogger().warn("Skipping unknown YAML property '{}' for {}", name, type.getSimpleName());
+                    }
+                    return super.getProperty(type, name, bAccess);
+                }
+            };
+            propertyUtils.setSkipMissingProperties(true);
+            constructor.setPropertyUtils(propertyUtils);
+            return new Yaml(constructor).load(configStream);
         } catch (YAMLException e) {
             String message = "Could not interpret " + filePath.getFileName()
                     + ". The format may be outdated. Please DELETE or RENAME this file to allow it to be regenerated.";
@@ -119,14 +141,17 @@ public class ProjectsConfig {
     private List<ChannelDetectionsConfig> channelDetections = List.of();
 
     /**
-     * @return the {@link qupath.lib.objects.classes.PathClass} name used to select annotations for running detections
+     * @return the {@link qupath.lib.objects.classes.PathClass} name used to select
+     *         annotations for running detections
      */
     public String getClassForDetections() {
         return classForDetections;
     }
 
     /**
-     * @param classForDetections the {@link qupath.lib.objects.classes.PathClass} name used to select annotations for running detections
+     * @param classForDetections the {@link qupath.lib.objects.classes.PathClass}
+     *                           name used to select annotations for running
+     *                           detections
      */
     public void setClassForDetections(String classForDetections) {
         this.classForDetections = classForDetections;

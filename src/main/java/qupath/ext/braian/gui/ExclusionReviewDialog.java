@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -173,12 +174,12 @@ public class ExclusionReviewDialog extends Stage {
                         qupath.getViewer().setImageData(loaded.imageData);
                         selectAndCenter(loaded.imageData, report.excludedAnnotationId());
                     } catch (IOException e) {
-                        Dialogs.showErrorMessage("Open image", e.getMessage());
+                        Dialogs.showErrorMessage("Open image", resolveErrorMessage(e));
                     }
                 });
             } catch (Exception e) {
                 logger.error("Navigation failed", e);
-                Platform.runLater(() -> Dialogs.showErrorMessage("Navigate", e.getMessage()));
+                Platform.runLater(() -> Dialogs.showErrorMessage("Navigate", resolveErrorMessage(e)));
             }
         });
     }
@@ -196,7 +197,7 @@ public class ExclusionReviewDialog extends Stage {
                     Platform.runLater(() -> reports.remove(report));
                 } catch (Exception e) {
                     logger.error("Restore failed", e);
-                    Platform.runLater(() -> Dialogs.showErrorMessage("Restore", e.getMessage()));
+                    Platform.runLater(() -> Dialogs.showErrorMessage("Restore", resolveErrorMessage(e)));
                     break;
                 }
             }
@@ -331,6 +332,14 @@ public class ExclusionReviewDialog extends Stage {
             }
         }
         return null;
+    }
+
+    private static String resolveErrorMessage(Exception e) {
+        String message = e.getMessage();
+        if (message == null || message.isBlank()) {
+            return "Unexpected error. See log for details.";
+        }
+        return message;
     }
 
     private record LoadedImage(Project<BufferedImage> project,

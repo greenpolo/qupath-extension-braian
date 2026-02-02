@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -157,7 +158,7 @@ public final class BraiAnAnalysisRunner {
                 processImage(qupath, imageData, project, entry, config, export);
                 entry.saveImageData(imageData);
             } catch (Exception e) {
-                logger.error("Failed processing {}: {}", entry.getImageName(), e.getMessage());
+                logger.error("Failed processing {}", entry.getImageName(), e);
             } finally {
                 closeServer(imageData);
             }

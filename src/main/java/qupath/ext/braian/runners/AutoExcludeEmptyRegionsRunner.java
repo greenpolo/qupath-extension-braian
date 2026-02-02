@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -42,10 +43,10 @@ public final class AutoExcludeEmptyRegionsRunner {
     /**
      * Runs auto-exclusion on the image currently open in QuPath.
      *
-     * @param qupath       the QuPath GUI instance
-     * @param channelNames the list of channel names to evaluate
-     * @param thresholds   per-channel threshold values; if a channel maps to null,
-     *                     an automatic threshold is computed
+     * @param qupath               the QuPath GUI instance
+     * @param channelNames         the list of channel names to evaluate
+     * @param useMaxAcrossChannels if true, use the max intensity across channels
+     * @param thresholdMultiplier  multiplier applied to the adaptive threshold
      * @return the list of excluded regions for the current image
      * @throws IllegalStateException if no image is open
      */
@@ -93,10 +94,10 @@ public final class AutoExcludeEmptyRegionsRunner {
     /**
      * Runs auto-exclusion for every entry of the current QuPath project.
      *
-     * @param qupath       the QuPath GUI instance
-     * @param channelNames the list of channel names to evaluate
-     * @param thresholds   per-channel threshold values; if a channel maps to null,
-     *                     an automatic threshold is computed
+     * @param qupath               the QuPath GUI instance
+     * @param channelNames         the list of channel names to evaluate
+     * @param useMaxAcrossChannels if true, use the max intensity across channels
+     * @param thresholdMultiplier  multiplier applied to the adaptive threshold
      * @return a flattened list of excluded regions for all entries
      * @throws IllegalStateException if no project is open
      */
@@ -155,12 +156,12 @@ public final class AutoExcludeEmptyRegionsRunner {
     /**
      * Runs auto-exclusion for a list of QuPath projects.
      *
-     * @param qupath       the QuPath GUI instance
-     * @param projectFiles list of QuPath project files (e.g.
-     *                     {@code project.qpproj})
-     * @param channelNames the list of channel names to evaluate
-     * @param thresholds   per-channel threshold values; if a channel maps to null,
-     *                     an automatic threshold is computed
+     * @param qupath               the QuPath GUI instance
+     * @param projectFiles         list of QuPath project files (e.g.
+     *                             {@code project.qpproj})
+     * @param channelNames         the list of channel names to evaluate
+     * @param useMaxAcrossChannels if true, use the max intensity across channels
+     * @param thresholdMultiplier  multiplier applied to the adaptive threshold
      * @return a flattened list of excluded regions for all entries across all
      *         projects
      * @throws IllegalArgumentException if {@code projectFiles} is null or empty

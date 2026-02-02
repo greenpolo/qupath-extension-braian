@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -9,6 +10,7 @@ import javafx.application.Platform;
 
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -60,7 +62,6 @@ import org.yaml.snakeyaml.error.YAMLException;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.awt.Desktop;
@@ -82,6 +83,8 @@ public class BraiAnDetectDialog {
 
     private final QuPathGUI qupath;
     private final Stage stage;
+    private final ChangeListener<Project<BufferedImage>> projectListener = (obs, oldValue, newValue) -> Platform
+            .runLater(this::updateConfigForContext);
     private final BooleanProperty batchMode = new SimpleBooleanProperty(false);
     private final BooleanProperty batchReady = new SimpleBooleanProperty(false);
     private final BooleanProperty running = new SimpleBooleanProperty(false);
@@ -133,6 +136,12 @@ public class BraiAnDetectDialog {
         DETECTION
     }
 
+    /**
+     * Creates the main BraiAnDetect dialog.
+     *
+     * @param qupath     the QuPath GUI instance
+     * @param initialTab which tab should be selected initially
+     */
     public BraiAnDetectDialog(QuPathGUI qupath, InitialTab initialTab) {
         this.qupath = qupath;
         this.stage = new Stage();
@@ -150,16 +159,22 @@ public class BraiAnDetectDialog {
 
         initializeConfig();
 
-        qupath.projectProperty().addListener((obs, oldValue, newValue) -> {
-            Platform.runLater(this::updateConfigForContext);
-        });
+        qupath.projectProperty().addListener(projectListener);
         this.stage.setScene(new Scene(buildRoot(initialTab)));
     }
 
+    /**
+     * Registers a callback to run when the dialog closes.
+     *
+     * @param onClose callback invoked after the dialog is hidden
+     */
     public void setOnClose(Runnable onClose) {
         this.onClose = onClose;
     }
 
+    /**
+     * Shows the dialog and brings it to the front.
+     */
     public void show() {
         this.stage.show();
         this.stage.toFront();
@@ -570,7 +585,11 @@ public class BraiAnDetectDialog {
             return;
         }
 
-        refreshDiscoveredProjects(rootPath);
+        Map<Path, Boolean> selectedByPath = new HashMap<>();
+        for (DiscoveredProject project : discoveredProjects) {
+            selectedByPath.put(project.getProjectFile(), project.isSelected());
+        }
+        discoveredProjects.setAll(buildDiscoveredProjects(rootPath, selectedByPath));
         List<Path> selectedProjects = getSelectedProjectFiles();
         if (selectedProjects.isEmpty()) {
             Dialogs.showErrorMessage("BraiAnDetect", "Select at least one project to import.");
@@ -641,15 +660,23 @@ public class BraiAnDetectDialog {
         }
 
         runAsync("Discover Projects", () -> {
-            List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
-            List<DiscoveredProject> refreshed = new ArrayList<>();
-            for (Path projectFile : projectFiles) {
-                String name = projectFile.getParent().getFileName().toString();
-                boolean selected = selectedByPath.getOrDefault(projectFile, true);
-                refreshed.add(new DiscoveredProject(name, projectFile, selected));
-            }
+            List<DiscoveredProject> refreshed = buildDiscoveredProjects(rootPath, selectedByPath);
             Platform.runLater(() -> discoveredProjects.setAll(refreshed));
         });
+    }
+
+    private List<DiscoveredProject> buildDiscoveredProjects(Path rootPath, Map<Path, Boolean> selectedByPath) {
+        if (rootPath == null) {
+            return List.of();
+        }
+        List<Path> projectFiles = ProjectDiscoveryService.discoverProjectFiles(rootPath);
+        List<DiscoveredProject> refreshed = new ArrayList<>();
+        for (Path projectFile : projectFiles) {
+            String name = projectFile.getParent().getFileName().toString();
+            boolean selected = selectedByPath.getOrDefault(projectFile, true);
+            refreshed.add(new DiscoveredProject(name, projectFile, selected));
+        }
+        return refreshed;
     }
 
     private List<Path> getSelectedProjectFiles() {
@@ -832,6 +859,7 @@ public class BraiAnDetectDialog {
 
     private void shutdownExecutors() {
         saveDebounce.stop();
+        qupath.projectProperty().removeListener(projectListener);
         saveExecutor.shutdown();
         runExecutor.shutdown();
     }

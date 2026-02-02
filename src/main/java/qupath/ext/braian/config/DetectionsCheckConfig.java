@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -7,7 +8,8 @@ package qupath.ext.braian.config;
 /**
  * Configuration for enforcing detections overlap checks.
  * <p>
- * This is typically used to compute and validate double-positive detections relative to a control channel.
+ * This is typically used to compute and validate double-positive detections
+ * relative to a control channel.
  */
 public class DetectionsCheckConfig {
     private boolean apply = false;
@@ -35,7 +37,8 @@ public class DetectionsCheckConfig {
     }
 
     /**
-     * @param controlChannel the control channel name used as reference for overlap checks
+     * @param controlChannel the control channel name used as reference for overlap
+     *                       checks
      */
     public void setControlChannel(String controlChannel) {
         this.controlChannel = controlChannel;

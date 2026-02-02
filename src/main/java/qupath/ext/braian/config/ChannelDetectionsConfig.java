@@ -1,4 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Carlo Castoldi <carlo.castoldi@outlook.com>
+// SPDX-FileCopyrightText: 2025 Nash Baughman <nfbaughman@gmail.com>
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -7,11 +8,11 @@ package qupath.ext.braian.config;
 import java.util.ArrayList;
 import java.util.List;
 
-
 /**
  * Per-channel configuration for BraiAn detection and classification.
  * <p>
- * This configuration describes one channel (by {@link #getName()}) and provides both cell-detection
+ * This configuration describes one channel (by {@link #getName()}) and provides
+ * both cell-detection
  * parameters and optional classifiers.
  */
 public class ChannelDetectionsConfig {
@@ -24,14 +25,16 @@ public class ChannelDetectionsConfig {
     private List<PixelClassifierConfig> pixelClassifiers = new ArrayList<>();
 
     /**
-     * @return the 1-based input channel index used to map to the source image channels
+     * @return the 1-based input channel index used to map to the source image
+     *         channels
      */
     public int getInputChannelID() {
         return inputChannelID;
     }
 
     /**
-     * @param inputChannelID the 1-based input channel index used to map to the source image channels
+     * @param inputChannelID the 1-based input channel index used to map to the
+     *                       source image channels
      */
     public void setInputChannelID(int inputChannelID) {
         this.inputChannelID = inputChannelID;
@@ -45,7 +48,8 @@ public class ChannelDetectionsConfig {
     }
 
     /**
-     * Sets the channel name and propagates it to {@link WatershedCellDetectionConfig}.
+     * Sets the channel name and propagates it to
+     * {@link WatershedCellDetectionConfig}.
      *
      * @param name the channel name
      */
@@ -78,12 +82,13 @@ public class ChannelDetectionsConfig {
     /**
      * Sets the list of object classifier configurations for this channel.
      * <p>
-     * This method also sets {@link ChannelClassifierConfig#setChannel(String)} based on {@link #getName()}.
+     * This method also sets {@link ChannelClassifierConfig#setChannel(String)}
+     * based on {@link #getName()}.
      *
      * @param classifiers the classifier configurations
      */
     public void setClassifiers(List<ChannelClassifierConfig> classifiers) {
-        for (ChannelClassifierConfig classifier: classifiers) {
+        for (ChannelClassifierConfig classifier : classifiers) {
             classifier.setChannel(this.name);
         }
         this.classifiers = classifiers;
@@ -111,7 +116,8 @@ public class ChannelDetectionsConfig {
     }
 
     /**
-     * @param enablePixelClassification true to enable pixel classification for this channel
+     * @param enablePixelClassification true to enable pixel classification for this
+     *                                  channel
      */
     public void setEnablePixelClassification(boolean enablePixelClassification) {
         this.enablePixelClassification = enablePixelClassification;
