@@ -16,6 +16,7 @@ import org.yaml.snakeyaml.representer.Representer;
 import qupath.ext.braian.utils.BraiAn;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
+import qupath.lib.projects.Project;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -49,8 +50,8 @@ public class ProjectsConfig {
      * @throws YAMLException if it found and read the config file, but it was badly
      *                       formatted.
      */
-    public static ProjectsConfig read(String yamlFileName) throws IOException, YAMLException {
-        Path filePath = BraiAn.resolvePath(yamlFileName);
+    public static ProjectsConfig read(Project<?> project, String yamlFileName) throws IOException, YAMLException {
+        Path filePath = BraiAn.resolvePath(project, yamlFileName);
         return read(filePath);
     }
 

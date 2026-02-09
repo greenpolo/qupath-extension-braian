@@ -60,6 +60,8 @@ public abstract class AbstractDetections {
     private final String id;
     private final PathObjectHierarchy hierarchy;
     private final List<PathClass> detectionClasses;
+    private final Project<?> project;
+    private final QuPathGUI qupath;
     private List<PathAnnotationObject> containers = new ArrayList<>();
     private BoundingBoxHierarchy bbh;
 
@@ -81,6 +83,8 @@ public abstract class AbstractDetections {
         this.hierarchy = hierarchy;
         this.id = id;
         this.detectionClasses = detectionClasses.stream().toList();
+        this.project = project;
+        this.qupath = qupath;
         if (project != null) {
             BraiAn.populatePathClassGUI(project, qupath, this.detectionClasses.toArray(new PathClass[0]));
         }
@@ -374,7 +378,7 @@ public abstract class AbstractDetections {
         if (classifier.classifyObjects(imageData, cells, true) > 0)
             imageData.getHierarchy().fireObjectClassificationsChangedEvent(classifier, cells);
         PathClass discardedPC = this.getDiscardedDetectionsPathClass();
-        BraiAn.populatePathClassGUI(discardedPC);
+        BraiAn.populatePathClassGUI(project, qupath, discardedPC);
         return cells.stream().filter(d -> this.hasDetectionClass(d, false)).toList();
     }
 
