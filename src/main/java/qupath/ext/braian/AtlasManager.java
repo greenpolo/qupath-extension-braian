@@ -8,15 +8,24 @@ import qupath.ext.braian.utils.BraiAn;
 import qupath.lib.common.GeneralTools;
 import qupath.lib.gui.measure.ObservableMeasurementTableData;
 import qupath.lib.images.servers.PixelCalibration;
+import qupath.imagej.tools.IJTools;
+import qupath.lib.images.ImageData;
+import qupath.lib.images.servers.ImageServer;
 import qupath.lib.objects.PathAnnotationObject;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.PathObjectTools;
+import qupath.lib.objects.PathObjects;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 import qupath.lib.projects.ProjectImageEntry;
+import qupath.lib.regions.RegionRequest;
+import qupath.lib.roi.interfaces.ROI;
 import qupath.lib.scripting.QP;
 
+import ij.ImagePlus;
+import ij.gui.Roi;
 import ij.measure.ResultsTable;
+import ij.process.ImageProcessor;
 import java.awt.image.BufferedImage;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -57,6 +66,8 @@ public class AtlasManager {
     public final static PathClass EXCLUDE_CLASSIFICATION = PathClass.fromString("Exclude");
     public final static PathClass ABBA_LEFT = PathClass.fromString("Left");
     public final static PathClass ABBA_RIGHT = PathClass.fromString("Right");
+
+    private static final int AUTO_EXCLUDE_RESOLUTION_LEVEL = 4;
 
     /**
      * Checks whether at least one ABBA atlas was previously imported.
@@ -357,6 +368,129 @@ public class AtlasManager {
         }
         getLogger().info("Exclusions '{}' Saved under '{}', contains {} rows", file.getName(), file.getParentFile().getAbsolutePath(), regionsToExclude.size());
         return true;
+    }
+
+    /**
+     * Automatically excludes atlas regions that appear empty based on Otsu thresholding of the nuclei channel.
+     *
+     * <p>A region is excluded if its mean intensity in the nuclei channel is below the Otsu threshold,
+     * computed on a downsampled representation of the same channel.
+     *
+     * <p>Exclusion is performed by creating a duplicate annotation outside the atlas hierarchy and
+     * assigning it the {@link #EXCLUDE_CLASSIFICATION} class.
+     *
+     * @param imageData image used to compute intensities
+     * @param nucleiChannelName channel used for tissue detection (e.g. DAPI)
+     * @param manualThreshold optional manual threshold override; if null, Otsu is used
+     * @return reports for newly excluded regions
+     */
+    public List<ExclusionReport> autoExcludeEmptyRegions(
+            ImageData<BufferedImage> imageData,
+            String nucleiChannelName,
+            Integer manualThreshold
+    ) {
+        Objects.requireNonNull(imageData, "imageData");
+        Objects.requireNonNull(nucleiChannelName, "nucleiChannelName");
+
+        int threshold;
+        if (manualThreshold != null) {
+            threshold = manualThreshold;
+        } else {
+            try {
+                ImageChannelTools channel = new ImageChannelTools(nucleiChannelName, imageData);
+                ChannelHistogram histogram = channel.getHistogram(AUTO_EXCLUDE_RESOLUTION_LEVEL);
+                threshold = histogram.otsuThreshold();
+                getLogger().info("Computed Otsu threshold for channel '{}': {}", nucleiChannelName, threshold);
+            } catch (Exception e) {
+                getLogger().error("Failed to compute Otsu threshold for channel '{}': {}", nucleiChannelName,
+                        e.getMessage());
+                return List.of();
+            }
+        }
+
+        // Avoid creating duplicate exclusions for regions already excluded
+        Set<PathObject> alreadyExcluded = getExcludedBrainRegions();
+
+        List<ExclusionReport> reports = new ArrayList<>();
+        for (PathObject region : flatten()) {
+            if (!(region instanceof PathAnnotationObject annotation))
+                continue;
+            if (region == this.atlasObject)
+                continue;
+
+            String name = annotation.getName();
+            if (name != null && ("Root".equals(name) || "root".equals(name)))
+                continue;
+            if (alreadyExcluded.contains(region))
+                continue;
+
+            ROI roi = annotation.getROI();
+            if (roi == null || !roi.isArea() || roi.getArea() <= 0)
+                continue;
+
+            double mean;
+            try {
+                mean = getRegionMeanIntensity(imageData, annotation, nucleiChannelName, AUTO_EXCLUDE_RESOLUTION_LEVEL);
+            } catch (Exception e) {
+                getLogger().warn("Failed to compute mean for region '{}' channel '{}': {}", annotation.getName(),
+                        nucleiChannelName, e.getMessage());
+                continue;
+            }
+
+            if (mean < threshold) {
+                PathAnnotationObject exclude = (PathAnnotationObject) PathObjects.createAnnotationObject(annotation.getROI());
+                exclude.setName(annotation.getName());
+                exclude.setPathClass(EXCLUDE_CLASSIFICATION);
+                this.hierarchy.addObject(exclude);
+
+                reports.add(new ExclusionReport(
+                        imageData.getServerMetadata().getName(),
+                        exclude.getID(),
+                        annotation.getName(),
+                        nucleiChannelName,
+                        mean,
+                        threshold
+                ));
+            }
+        }
+        return reports;
+    }
+
+    private static RegionRequest regionRequestForRoi(ImageServer<BufferedImage> server, double downsample, ROI roi) {
+        int x = (int) Math.floor(roi.getBoundsX());
+        int y = (int) Math.floor(roi.getBoundsY());
+        int w = Math.max(1, (int) Math.ceil(roi.getBoundsWidth()));
+        int h = Math.max(1, (int) Math.ceil(roi.getBoundsHeight()));
+        return RegionRequest.createInstance(server.getPath(), downsample, x, y, w, h);
+    }
+
+    private static double getRegionMeanIntensity(
+            ImageData<BufferedImage> imageData,
+            PathAnnotationObject region,
+            String channelName,
+            int resolutionLevel
+    ) throws IOException {
+        Objects.requireNonNull(imageData, "imageData");
+        Objects.requireNonNull(region, "region");
+        Objects.requireNonNull(channelName, "channelName");
+
+        ImageServer<BufferedImage> server = imageData.getServer();
+        ImageChannelTools channel = new ImageChannelTools(channelName, imageData);
+        double downsample = server.getDownsampleForResolution(Math.min(server.nResolutions() - 1, resolutionLevel));
+
+        RegionRequest request = regionRequestForRoi(server, downsample, region.getROI());
+        var pathImage = IJTools.convertToImagePlus(server, request);
+        ImagePlus imp = pathImage.getImage();
+
+        int ijChannel = channel.getnChannel() + 1; // ImageJ channels are 1-based
+        imp.setC(ijChannel);
+
+        ImageProcessor ip = imp.getChannelProcessor().duplicate();
+        Roi ijRoi = IJTools.convertToIJRoi(region.getROI(), request);
+        if (ijRoi != null)
+            ip.setRoi(ijRoi);
+
+        return ip.getStats().mean;
     }
 
     /**
