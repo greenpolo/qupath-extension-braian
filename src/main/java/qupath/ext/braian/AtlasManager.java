@@ -444,6 +444,8 @@ public class AtlasManager {
                 this.hierarchy.addObject(exclude);
 
                 reports.add(new ExclusionReport(
+                        null,
+                        null,
                         imageData.getServerMetadata().getName(),
                         exclude.getID(),
                         annotation.getName(),
